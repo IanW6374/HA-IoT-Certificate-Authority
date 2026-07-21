@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Replace unreliable response-close export cleanup with explicit download confirmation.
+- Clarify when the offline-root warning is cleared and when protected files are deleted.
+
 ## 0.1.1
 
 - Prevent `step-ca` from starting before initialization and provisioner policy updates complete.

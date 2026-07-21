@@ -43,8 +43,9 @@ renaming a setting.
 
 Initialization creates a root and online intermediate with `step-ca`. Before
 the online service starts, the root key is re-encrypted with the supplied
-offline passphrase, staged as a one-time ZIP download, and removed from the CA
-working directory.
+offline passphrase, staged as a protected ZIP download, and removed from the CA
+working directory. The export is deleted after you explicitly confirm that it
+was downloaded and stored safely.
 
 Download the root export immediately. Store its archive and passphrase in
 separate offline locations. The archive contains:
@@ -57,8 +58,8 @@ README.txt
 ```
 
 The download link expires after seven days. If the browser loses its link
-before download, use **Open root download** on the dashboard to invalidate the
-old token and produce another link to the same encrypted archive.
+before confirmation, use **Review root export** on the dashboard to invalidate
+the old token and produce another link to the same encrypted archive.
 
 ## Certificate profiles
 

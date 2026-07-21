@@ -12,8 +12,8 @@ class WebTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        service = CertificateService(root, engine=FakeEngine())
-        self.app = create_app(data_root=root, service=service)
+        self.service = CertificateService(root, engine=FakeEngine())
+        self.app = create_app(data_root=root, service=self.service)
         self.app.testing = True
         self.client = self.app.test_client()
 
@@ -35,6 +35,28 @@ class WebTests(unittest.TestCase):
         response = self.client.post("/certificates/new", data={})
         self.assertEqual(response.status_code, 403)
 
+    def test_offline_root_warning_clears_after_confirmation(self):
+        token = self.service._store_export(
+            b"encrypted-root-export",
+            kind="offline-root",
+            filename="iot-ca-offline-root.zip",
+        )
+        csrf_token = self.csrf()
+        with self.client.session_transaction() as browser_session:
+            browser_session["pending_export_token"] = token
+            browser_session["pending_export_kind"] = "offline-root"
+
+        dashboard = self.client.get("/")
+        self.assertIn(b"Offline root export is awaiting confirmation", dashboard.data)
+        confirmed = self.client.post(
+            "/exports/confirm",
+            data={"csrf_token": csrf_token},
+            follow_redirects=True,
+        )
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertNotIn(b"Offline root export is awaiting confirmation", confirmed.data)
+        self.assertIsNone(self.service.export_for_token(token))
+
     def test_issue_route_prepares_one_time_export(self):
         response = self.client.post(
             "/certificates/new",
@@ -52,6 +74,23 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Certificate package is ready", response.data)
         self.assertIn(b"hamd-web-test-hamd.zip", response.data)
+        with self.client.session_transaction() as browser_session:
+            token = browser_session["pending_export_token"]
+            csrf_token = browser_session["csrf_token"]
+
+        download = self.client.get("/download")
+        self.assertEqual(download.status_code, 200)
+        self.assertIsNotNone(self.service.export_for_token(token))
+        download.close()
+
+        confirmed = self.client.post(
+            "/exports/confirm",
+            data={"csrf_token": csrf_token},
+            follow_redirects=True,
+        )
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertIn(b"Export confirmed and removed from app storage", confirmed.data)
+        self.assertIsNone(self.service.export_for_token(token))
 
 
 if __name__ == "__main__":

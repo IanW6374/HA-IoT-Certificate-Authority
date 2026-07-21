@@ -5,7 +5,7 @@
   <a class="button primary" href="{{ url_for('new_certificate') }}">Issue certificate</a>
 </section>
 {% if dashboard.root_export_pending %}
-<section class="critical panel"><div><strong>Offline root export has not been consumed</strong><p>Download it now, then store the archive and passphrase in separate offline locations.</p></div><form method="post" action="{{ url_for('recover_root_link') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Open root download</button></form></section>
+<section class="critical panel"><div><strong>Offline root export is awaiting confirmation</strong><p>Confirm that the downloaded archive and its passphrase are stored in separate offline locations.</p></div><form method="post" action="{{ url_for('recover_root_link') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Review root export</button></form></section>
 {% endif %}
 <section class="stats">
   <article><span>Total</span><strong>{{ dashboard.counts.total }}</strong></article>

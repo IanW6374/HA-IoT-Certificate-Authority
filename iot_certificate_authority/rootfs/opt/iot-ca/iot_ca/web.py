@@ -209,21 +209,37 @@ def create_app(*, data_root=None, service=None):
 
     @app.get("/download")
     def download_export():
-        token = session.pop("pending_export_token", None)
-        session.pop("pending_export_kind", None)
-        session.pop("new_certificate_id", None)
+        token = session.get("pending_export_token")
         record = certificate_service.export_for_token(token) if token else None
         if not record:
             abort(404, "One-time export not found or expired")
-        response = send_file(
+        return send_file(
             record["path"],
             as_attachment=True,
             download_name=record["filename"],
             mimetype="application/zip",
             conditional=False,
         )
-        response.call_on_close(lambda: certificate_service.complete_export(record))
-        return response
+
+    @app.post("/exports/confirm")
+    def confirm_export():
+        token = session.get("pending_export_token")
+        record = certificate_service.export_for_token(token) if token else None
+        if not record:
+            flash("The export is unavailable or has expired", "error")
+            return redirect(url_for("dashboard"))
+        try:
+            certificate_service.complete_export(record)
+        except Exception as exc:
+            flash(f"Could not clear the export: {exc}", "error")
+            return redirect(url_for("export_ready"))
+        certificate_id = session.pop("new_certificate_id", None)
+        session.pop("pending_export_token", None)
+        session.pop("pending_export_kind", None)
+        flash("Export confirmed and removed from app storage", "success")
+        if certificate_id and certificate_service.certificate(certificate_id):
+            return redirect(url_for("certificate_detail", certificate_id=certificate_id))
+        return redirect(url_for("dashboard"))
 
     @app.post("/offline-root/recover-link")
     def recover_root_link():
