@@ -1,0 +1,28 @@
+name: IoT Certificate Authority
+version: "0.1.0"
+slug: iot_certificate_authority
+description: Graphical private CA and certificate lifecycle manager for IoT devices
+url: https://github.com/IanW6374/HA-IoT-Certificate-Authority
+stage: experimental
+startup: services
+boot: auto
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armv7
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:certificate
+panel_title: IoT Certificate Authority
+panel_admin: true
+backup: cold
+ports:
+  9000/tcp: 9000
+ports_description:
+  9000/tcp: step-ca HTTPS and ACME enrollment endpoint
+map:
+  - type: addon_config
+    read_only: false
+options: {}
+schema: {}

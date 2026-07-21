@@ -1,0 +1,280 @@
+"""Administrator-only Flask interface served behind Home Assistant Ingress."""
+
+from __future__ import annotations
+
+import os
+import secrets
+from pathlib import Path
+
+from flask import (
+    Flask,
+    abort,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
+
+from .profiles import PROFILES
+from .service import CertificateService
+
+
+class IngressScriptName:
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        ingress_path = environ.get("HTTP_X_INGRESS_PATH", "").rstrip("/")
+        if ingress_path:
+            environ["SCRIPT_NAME"] = ingress_path
+        return self.app(environ, start_response)
+
+
+def _secret_key(data_root: Path):
+    path = data_root / "secrets" / "flask-secret"
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(secrets.token_urlsafe(48))
+        path.chmod(0o600)
+    return path.read_text().strip()
+
+
+def create_app(*, data_root=None, service=None):
+    data_root = Path(data_root or os.environ.get("IOT_CA_DATA_ROOT", "/config/iot-ca"))
+    app = Flask(__name__)
+    app.secret_key = _secret_key(data_root)
+    app.config.update(
+        MAX_CONTENT_LENGTH=1024 * 1024,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Strict",
+    )
+    app.wsgi_app = IngressScriptName(app.wsgi_app)
+    certificate_service = service or CertificateService(data_root)
+    app.extensions["certificate_service"] = certificate_service
+
+    @app.before_request
+    def csrf_protection():
+        certificate_service.cleanup_exports()
+        if "csrf_token" not in session:
+            session["csrf_token"] = secrets.token_urlsafe(24)
+        if request.method == "POST":
+            supplied = request.form.get("csrf_token", "")
+            if not secrets.compare_digest(supplied, session["csrf_token"]):
+                abort(403, "Invalid CSRF token")
+
+    @app.after_request
+    def secure_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; style-src 'self'; script-src 'self'; "
+            "img-src 'self' data:; frame-ancestors 'self'"
+        )
+        return response
+
+    @app.context_processor
+    def template_values():
+        return {
+            "csrf_token": session.get("csrf_token", ""),
+            "profiles": PROFILES,
+            "initialized": certificate_service.initialized,
+        }
+
+    @app.get("/healthz")
+    def health():
+        return jsonify({"application": "ok", "ca": certificate_service.engine.health()})
+
+    @app.route("/", methods=["GET"])
+    def dashboard():
+        if not certificate_service.initialized:
+            return render_template("setup.html")
+        return render_template(
+            "dashboard.html",
+            dashboard=certificate_service.dashboard(),
+            settings=certificate_service.settings(),
+        )
+
+    @app.post("/setup")
+    def setup():
+        if certificate_service.initialized:
+            abort(409, "Certificate authority is already initialized")
+        if request.form.get("root_export_passphrase") != request.form.get("confirm_passphrase"):
+            flash("Offline-root export passphrases do not match", "error")
+            return redirect(url_for("dashboard"))
+        try:
+            token = certificate_service.initialize(
+                ca_name=request.form.get("ca_name", ""),
+                ca_dns=request.form.get("ca_dns", ""),
+                allowed_dns_suffix=request.form.get("allowed_dns_suffix", ""),
+                root_export_passphrase=request.form.get("root_export_passphrase", ""),
+                allow_public_sans=request.form.get("allow_public_sans") == "on",
+            )
+            session["pending_export_token"] = token
+            session["pending_export_kind"] = "offline-root"
+            return redirect(url_for("export_ready"))
+        except Exception as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("dashboard"))
+
+    @app.get("/certificates")
+    def certificates():
+        _require_initialized(certificate_service)
+        return render_template(
+            "certificates.html",
+            certificates=certificate_service.certificates(),
+        )
+
+    @app.route("/certificates/new", methods=["GET", "POST"])
+    def new_certificate():
+        _require_initialized(certificate_service)
+        if request.method == "GET":
+            selected = request.args.get("profile", "hamd")
+            return render_template("new_certificate.html", selected_profile=selected)
+        try:
+            certificate_id, token = certificate_service.issue(
+                profile_slug=request.form.get("profile", ""),
+                common_name=request.form.get("common_name", ""),
+                sans=request.form.get("sans", ""),
+                key_type=request.form.get("key_type", ""),
+                validity_days=request.form.get("validity_days", ""),
+                export_format=request.form.get("export_format", ""),
+                export_password=request.form.get("export_password", ""),
+            )
+            session["pending_export_token"] = token
+            session["pending_export_kind"] = "certificate"
+            session["new_certificate_id"] = certificate_id
+            return redirect(url_for("export_ready"))
+        except Exception as exc:
+            flash(str(exc), "error")
+            return render_template(
+                "new_certificate.html",
+                selected_profile=request.form.get("profile", "hamd"),
+                form=request.form,
+            ), 400
+
+    @app.get("/certificates/<certificate_id>")
+    def certificate_detail(certificate_id):
+        _require_initialized(certificate_service)
+        certificate = certificate_service.certificate(certificate_id)
+        if not certificate:
+            abort(404)
+        return render_template("certificate_detail.html", certificate=certificate)
+
+    @app.post("/certificates/<certificate_id>/renew")
+    def renew_certificate(certificate_id):
+        _require_initialized(certificate_service)
+        try:
+            new_id, token = certificate_service.renew(
+                certificate_id,
+                export_format=request.form.get("export_format", "pem"),
+                export_password=request.form.get("export_password", ""),
+            )
+            session["pending_export_token"] = token
+            session["pending_export_kind"] = "certificate"
+            session["new_certificate_id"] = new_id
+            return redirect(url_for("export_ready"))
+        except Exception as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("certificate_detail", certificate_id=certificate_id))
+
+    @app.post("/certificates/<certificate_id>/revoke")
+    def revoke_certificate(certificate_id):
+        _require_initialized(certificate_service)
+        try:
+            certificate_service.revoke(certificate_id)
+            flash("Certificate revoked. Existing copies remain valid until expiry, but cannot renew.", "success")
+        except Exception as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("certificate_detail", certificate_id=certificate_id))
+
+    @app.get("/export-ready")
+    def export_ready():
+        token = session.get("pending_export_token")
+        record = certificate_service.export_for_token(token) if token else None
+        if not record:
+            flash("The one-time export is unavailable or has expired", "error")
+            return redirect(url_for("dashboard"))
+        return render_template(
+            "export_ready.html",
+            record=record,
+            export_kind=session.get("pending_export_kind"),
+            certificate_id=session.get("new_certificate_id"),
+        )
+
+    @app.get("/download")
+    def download_export():
+        token = session.pop("pending_export_token", None)
+        session.pop("pending_export_kind", None)
+        session.pop("new_certificate_id", None)
+        record = certificate_service.export_for_token(token) if token else None
+        if not record:
+            abort(404, "One-time export not found or expired")
+        response = send_file(
+            record["path"],
+            as_attachment=True,
+            download_name=record["filename"],
+            mimetype="application/zip",
+            conditional=False,
+        )
+        response.call_on_close(lambda: certificate_service.complete_export(record))
+        return response
+
+    @app.post("/offline-root/recover-link")
+    def recover_root_link():
+        _require_initialized(certificate_service)
+        try:
+            token = certificate_service.recover_root_export()
+            session["pending_export_token"] = token
+            session["pending_export_kind"] = "offline-root"
+            return redirect(url_for("export_ready"))
+        except Exception as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("dashboard"))
+
+    @app.get("/trust/root.pem")
+    def root_pem():
+        _require_initialized(certificate_service)
+        return _memory_download(certificate_service.root_trust("pem"), "iot-ca-root.pem", "application/x-pem-file")
+
+    @app.get("/trust/root.der")
+    def root_der():
+        _require_initialized(certificate_service)
+        return _memory_download(certificate_service.root_trust("der"), "iot-ca-root.der", "application/pkix-cert")
+
+    @app.get("/audit")
+    def audit():
+        _require_initialized(certificate_service)
+        return render_template("audit.html", entries=certificate_service.audit_log())
+
+    @app.get("/settings")
+    def settings():
+        _require_initialized(certificate_service)
+        return render_template(
+            "settings.html",
+            settings=certificate_service.settings(),
+            ca_health=certificate_service.engine.health(),
+        )
+
+    @app.errorhandler(403)
+    @app.errorhandler(404)
+    @app.errorhandler(409)
+    def error_page(error):
+        return render_template("error.html", error=error), getattr(error, "code", 500)
+
+    return app
+
+
+def _require_initialized(service):
+    if not service.initialized:
+        abort(409, "Initialize the certificate authority first")
+
+
+def _memory_download(data, filename, mimetype):
+    import io
+    return send_file(io.BytesIO(data), as_attachment=True, download_name=filename, mimetype=mimetype)

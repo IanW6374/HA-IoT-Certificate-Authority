@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}IoT Certificate Authority{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-mark">CA</span><span>IoT Certificate Authority</span></a>
+    {% if initialized %}
+    <nav aria-label="Primary">
+      <a href="{{ url_for('dashboard') }}">Overview</a>
+      <a href="{{ url_for('certificates') }}">Certificates</a>
+      <a href="{{ url_for('audit') }}">Audit</a>
+      <a href="{{ url_for('settings') }}">Settings</a>
+    </nav>
+    {% endif %}
+  </header>
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}<div class="notice {{ category }}" role="alert">{{ message }}</div>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

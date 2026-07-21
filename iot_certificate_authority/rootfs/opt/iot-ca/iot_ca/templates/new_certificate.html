@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Issue certificate · IoT Certificate Authority{% endblock %}
+{% block content %}
+<section class="hero narrow"><p class="eyebrow">New identity</p><h1>Issue a certificate</h1><p>The private key is generated for this request and deleted after the one-time download expires or is consumed.</p></section>
+<form class="panel form-grid narrow" method="post" id="certificate-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Certificate profile<select name="profile" id="profile">
+  {% for slug, profile in profiles.items() %}<option value="{{ slug }}" data-description="{{ profile.description }}" data-default-days="{{ profile.default_days }}" data-key-types="{{ profile.key_types|join(',') }}" data-default-key="{{ profile.default_key_type }}" data-exports="{{ profile.export_formats|join(',') }}" {{ 'selected' if slug == selected_profile else '' }}>{{ profile.name }}</option>{% endfor %}
+  </select><span id="profile-description" class="help"></span></label>
+  <label>Common name<input name="common_name" required maxlength="64" value="{{ form.common_name if form else '' }}" placeholder="hamd-a1b2c3"></label>
+  <label>DNS or IP Subject Alternative Names<textarea name="sans" rows="3" placeholder="hamd-a1b2c3.home.arpa&#10;192.168.1.42">{{ form.sans if form else '' }}</textarea><span class="help">One per line or comma-separated. Local policy is enforced.</span></label>
+  <div class="grid two compact"><label>Key type<select name="key_type" id="key-type"></select></label><label>Validity in days<input name="validity_days" id="validity-days" type="number" min="1" value="{{ form.validity_days if form else '' }}"></label></div>
+  <label>Export format<select name="export_format" id="export-format"></select></label>
+  <label id="export-password-field" hidden>PKCS#12 password<input name="export_password" type="password" minlength="12" autocomplete="new-password"><span class="help">Required only for PKCS#12. This password is not stored.</span></label>
+  <div class="warning"><strong>One-time secret</strong><p>If the downloaded private key is lost, it cannot be recovered. Reissue the certificate with a new key instead.</p></div>
+  <button type="submit">Issue and prepare export</button>
+</form>
+{% endblock %}

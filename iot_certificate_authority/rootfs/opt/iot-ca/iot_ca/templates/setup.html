@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Initialize · IoT Certificate Authority{% endblock %}
+{% block content %}
+<section class="hero narrow">
+  <p class="eyebrow">One-time initialization</p>
+  <h1>Create your private IoT certificate authority</h1>
+  <p>This creates an offline root and an online intermediate. You must download the root export, record its separate passphrase, and store both offline.</p>
+</section>
+<form class="panel form-grid narrow" method="post" action="{{ url_for('setup') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>CA display name<input name="ca_name" required minlength="3" maxlength="64" value="Home IoT CA"></label>
+  <label>CA DNS name<input name="ca_dns" required placeholder="iot-ca.home.arpa"></label>
+  <label>Allowed device DNS suffix<input name="allowed_dns_suffix" required value="home.arpa"><span class="help">Certificate DNS names are restricted to this suffix by default.</span></label>
+  <label>Offline-root export passphrase<input name="root_export_passphrase" type="password" required minlength="16" autocomplete="new-password"><span class="help">Not stored. Losing it makes the encrypted offline root unusable.</span></label>
+  <label>Confirm passphrase<input name="confirm_passphrase" type="password" required minlength="16" autocomplete="new-password"></label>
+  <label class="check"><input name="allow_public_sans" type="checkbox">Allow public DNS and IP SANs</label>
+  <div class="warning"><strong>Before continuing</strong><p>Initialization is intentionally not reversible from the UI. Home Assistant will retain the online intermediate key; protect and test encrypted backups.</p></div>
+  <button type="submit">Initialize certificate authority</button>
+</form>
+{% endblock %}

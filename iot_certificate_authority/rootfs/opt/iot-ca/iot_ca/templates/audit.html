@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Audit · IoT Certificate Authority{% endblock %}
+{% block content %}
+<section class="hero"><p class="eyebrow">Operations</p><h1>Audit history</h1><p>Issuance, revocation, export, and initialization events recorded by this app.</p></section>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>Time</th><th>Action</th><th>Object</th><th>Result</th><th>Detail</th></tr></thead><tbody>
+{% for entry in entries %}<tr><td>{{ entry.occurred_at }}</td><td>{{ entry.action }}</td><td class="mono">{{ entry.object_id or '—' }}</td><td><span class="pill {{ 'active' if entry.success else 'revoked' }}">{{ 'success' if entry.success else 'failed' }}</span></td><td><code class="wrap">{{ entry.detail|tojson }}</code></td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

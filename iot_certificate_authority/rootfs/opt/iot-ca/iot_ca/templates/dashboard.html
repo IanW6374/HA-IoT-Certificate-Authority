@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero split">
+  <div><p class="eyebrow">{{ settings.ca_name }}</p><h1>Certificate operations at a glance</h1><p>Issuing service: <code>{{ settings.public_ca_url }}</code></p></div>
+  <a class="button primary" href="{{ url_for('new_certificate') }}">Issue certificate</a>
+</section>
+{% if dashboard.root_export_pending %}
+<section class="critical panel"><div><strong>Offline root export has not been consumed</strong><p>Download it now, then store the archive and passphrase in separate offline locations.</p></div><form method="post" action="{{ url_for('recover_root_link') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Open root download</button></form></section>
+{% endif %}
+<section class="stats">
+  <article><span>Total</span><strong>{{ dashboard.counts.total }}</strong></article>
+  <article><span>Active</span><strong>{{ dashboard.counts.active }}</strong></article>
+  <article><span>Expiring in 30 days</span><strong>{{ dashboard.expiring|length }}</strong></article>
+  <article><span>CA engine</span><strong class="status {{ 'good' if dashboard.ca_health.online else 'bad' }}">{{ 'Online' if dashboard.ca_health.online else 'Offline' }}</strong></article>
+</section>
+<section class="panel">
+  <div class="section-head"><div><p class="eyebrow">Inventory</p><h2>Recent certificates</h2></div><a href="{{ url_for('certificates') }}">View all</a></div>
+  {% if dashboard.recent %}
+  <div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>Expires</th><th>Status</th></tr></thead><tbody>
+  {% for certificate in dashboard.recent %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a></td><td>{{ profiles[certificate.profile].name }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty"><p>No certificates have been issued.</p><a class="button" href="{{ url_for('new_certificate', profile='hamd') }}">Issue the first one</a></div>{% endif %}
+</section>
+<section class="grid two">
+  <article class="panel"><p class="eyebrow">Trust</p><h2>Root certificate</h2><p>Install this public certificate in devices and clients that should trust identities issued here.</p><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">Download PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">Download DER</a></div></article>
+  <article class="panel"><p class="eyebrow">Automation</p><h2>ACME directory</h2><p><code class="wrap">{{ settings.acme_directory }}</code></p><p class="muted">ACME clients must trust this CA root and resolve the CA DNS name.</p></article>
+</section>
+{% endblock %}

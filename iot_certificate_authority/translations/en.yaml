@@ -1,0 +1,2 @@
+network:
+  9000/tcp: step-ca HTTPS and ACME enrollment endpoint

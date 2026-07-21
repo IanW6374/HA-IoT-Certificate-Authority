@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}One-time export · IoT Certificate Authority{% endblock %}
+{% block content %}
+<section class="hero narrow"><p class="eyebrow">One-time download</p><h1>{{ 'Offline root is ready' if export_kind == 'offline-root' else 'Certificate package is ready' }}</h1><p>This link expires at {{ record.expires_at }} and is invalidated after the response completes.</p></section>
+<section class="panel narrow critical"><div><strong>Store this download safely</strong><p>{% if export_kind == 'offline-root' %}Keep the archive and its passphrase in separate offline locations. The online CA cannot regenerate this root key.{% else %}The package contains a private key. The CA inventory retains only the public certificate.{% endif %}</p></div><a class="button primary" href="{{ url_for('download_export') }}">Download {{ record.filename }}</a></section>
+{% if certificate_id %}<p class="narrow"><a href="{{ url_for('certificate_detail', certificate_id=certificate_id) }}">Open certificate record</a></p>{% endif %}
+{% endblock %}

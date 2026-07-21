@@ -1,0 +1,2 @@
+{% extends "base.html" %}
+{% block content %}<section class="hero narrow"><p class="eyebrow">Request failed</p><h1>{{ error.code or 500 }}</h1><p>{{ error.description or error }}</p><a class="button" href="{{ url_for('dashboard') }}">Return to overview</a></section>{% endblock %}
