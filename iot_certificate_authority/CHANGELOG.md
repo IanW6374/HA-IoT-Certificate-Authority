@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Prevent `step-ca` from starting before initialization and provisioner policy updates complete.
+- Reapply certificate lifetime policy on startup so existing authorities accept profile durations.
+- Remove ANSI terminal formatting from Smallstep errors shown in the web interface.
+
 ## 0.1.0
 
 - Add guided CA initialization and one-time offline-root export.

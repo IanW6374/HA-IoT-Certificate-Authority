@@ -24,6 +24,7 @@ from cryptography.hazmat.primitives import serialization
 
 SAFE_CA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{2,63}$")
 SAFE_DNS = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$")
+ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-_])")
 
 
 class StepCAError(RuntimeError):
@@ -104,17 +105,7 @@ class StepCAEngine:
                     env=env,
                     timeout=90,
                 )
-                for provisioner, default_hours in ((self.PROVISIONER, 2160), ("acme", 24)):
-                    self._execute(
-                        [
-                            "step", "ca", "provisioner", "update", provisioner,
-                            "--x509-min-dur=5m",
-                            "--x509-max-dur=19800h",
-                            f"--x509-default-dur={default_hours}h",
-                            f"--ca-config={self.config_path}",
-                        ],
-                        env=env,
-                    )
+                self.apply_provisioner_policy()
                 root_export = self._offline_root_export(root_export_passphrase)
                 self.root_key_path.unlink(missing_ok=True)
                 settings = {
@@ -146,6 +137,21 @@ class StepCAEngine:
             return {"initialized": True, "online": payload.get("status") == "ok"}
         except Exception as exc:
             return {"initialized": True, "online": False, "error": str(exc)}
+
+    def apply_provisioner_policy(self):
+        """Persist the certificate lifetime policy before step-ca starts."""
+        with self._lock:
+            for provisioner, default_hours in ((self.PROVISIONER, 2160), ("acme", 24)):
+                self._execute(
+                    [
+                        "step", "ca", "provisioner", "update", provisioner,
+                        "--x509-min-dur=5m",
+                        "--x509-max-dur=19800h",
+                        f"--x509-default-dur={default_hours}h",
+                        f"--ca-config={self.config_path}",
+                    ],
+                    env=self._environment(),
+                )
 
     def wait_until_ready(self, timeout: float = 20):
         deadline = time.monotonic() + timeout
@@ -248,13 +254,14 @@ class StepCAEngine:
     def _environment(self):
         environment = os.environ.copy()
         environment["STEPPATH"] = str(self.step_path)
+        environment["NO_COLOR"] = "1"
         return environment
 
     def _execute(self, command: list[str], *, env: dict, timeout: int = 45) -> str:
         try:
             return self._run_command(command, env=env, timeout=timeout)
         except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            detail = ANSI_ESCAPE.sub("", exc.stderr or exc.stdout or str(exc)).strip()
             raise StepCAError(f"Smallstep command failed: {detail}") from exc
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise StepCAError(f"Could not run Smallstep command: {exc}") from exc

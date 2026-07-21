@@ -5,15 +5,18 @@ set -euo pipefail
 readonly DATA_ROOT="/config/iot-ca"
 readonly CA_CONFIG="${DATA_ROOT}/step/config/ca.json"
 readonly PASSWORD_FILE="${DATA_ROOT}/secrets/intermediate-password"
+readonly SETTINGS_FILE="${DATA_ROOT}/settings.json"
 
 export IOT_CA_DATA_ROOT="${DATA_ROOT}"
 export PYTHONPATH="/opt/iot-ca"
+export NO_COLOR="1"
 
 start_step_ca() {
-    while [[ ! -s "${CA_CONFIG}" || ! -s "${PASSWORD_FILE}" ]]; do
+    while [[ ! -s "${CA_CONFIG}" || ! -s "${PASSWORD_FILE}" || ! -s "${SETTINGS_FILE}" ]]; do
         sleep 2
     done
     export STEPPATH="${DATA_ROOT}/step"
+    python3 -c 'from iot_ca.engine import StepCAEngine; StepCAEngine("/config/iot-ca").apply_provisioner_policy()'
     exec step-ca "${CA_CONFIG}" --password-file "${PASSWORD_FILE}"
 }
 

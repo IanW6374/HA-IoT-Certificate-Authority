@@ -1,5 +1,5 @@
 name: IoT Certificate Authority
-version: "0.1.0"
+version: "0.1.1"
 slug: iot_certificate_authority
 description: Graphical private CA and certificate lifecycle manager for IoT devices
 url: https://github.com/IanW6374/HA-IoT-Certificate-Authority
