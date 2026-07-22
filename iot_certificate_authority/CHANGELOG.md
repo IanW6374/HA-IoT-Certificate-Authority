@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+
+- Start `step-ca` directly on add-on restarts instead of invoking the offline
+  provisioner-policy migration through an unavailable admin API.
+- Keep certificate lifetime policy configuration in the initial CA creation
+  path, before database-backed administration is enabled.
+
 ## 0.1.2
 
 - Replace unreliable response-close export cleanup with explicit download confirmation.
