@@ -16,7 +16,6 @@ start_step_ca() {
         sleep 2
     done
     export STEPPATH="${DATA_ROOT}/step"
-    python3 -c 'from iot_ca.engine import StepCAEngine; StepCAEngine("/config/iot-ca").apply_provisioner_policy()'
     exec step-ca "${CA_CONFIG}" --password-file "${PASSWORD_FILE}"
 }
 

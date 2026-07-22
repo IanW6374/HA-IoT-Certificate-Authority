@@ -38,6 +38,17 @@ class EngineTests(unittest.TestCase):
             self.assertIn("--x509-max-dur=19800h", command)
             self.assertEqual(environment["NO_COLOR"], "1")
 
+    def test_restart_does_not_reapply_offline_policy_through_admin_api(self):
+        run_script = (
+            Path(__file__).parents[1]
+            / "iot_certificate_authority"
+            / "rootfs"
+            / "run.sh"
+        ).read_text()
+
+        self.assertIn('exec step-ca "${CA_CONFIG}"', run_script)
+        self.assertNotIn("apply_provisioner_policy()", run_script)
+
 
 if __name__ == "__main__":
     unittest.main()
