@@ -4,11 +4,15 @@
 <section class="hero split"><div><p class="eyebrow">{{ profiles[certificate.profile].name }}</p><h1>{{ certificate.common_name }}</h1><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></div><a class="button secondary" href="{{ url_for('certificates') }}">Back to inventory</a></section>
 <section class="grid two">
   <article class="panel detail-list"><h2>Identity</h2><dl><dt>Subject alternative names</dt><dd>{{ certificate.sans|join(', ') or 'None' }}</dd><dt>Key type</dt><dd>{{ certificate.key_type }}</dd><dt>Serial</dt><dd class="mono">{{ certificate.serial }}</dd><dt>SHA-256 fingerprint</dt><dd class="mono wrap">{{ certificate.fingerprint }}</dd></dl></article>
-  <article class="panel detail-list"><h2>Lifecycle</h2><dl><dt>Issued</dt><dd>{{ certificate.not_before }}</dd><dt>Expires</dt><dd>{{ certificate.not_after }}</dd><dt>Validity profile</dt><dd>{{ certificate.validity_days }} days</dd><dt>Private key retained</dt><dd>No</dd>{% if certificate.renewed_from %}<dt>Renewed from</dt><dd><a href="{{ url_for('certificate_detail', certificate_id=certificate.renewed_from) }}">Previous certificate</a></dd>{% endif %}</dl></article>
+  <article class="panel detail-list"><h2>Lifecycle</h2><dl><dt>Issued</dt><dd>{{ certificate.not_before }}</dd><dt>Expires</dt><dd>{{ certificate.not_after }}</dd><dt>Validity profile</dt><dd>{{ certificate.validity_days }} days</dd><dt>Source</dt><dd>{{ certificate.source|upper }}</dd>{% if certificate.provisioner %}<dt>Provisioner</dt><dd>{{ certificate.provisioner }}</dd>{% endif %}<dt>Private key retained</dt><dd>No</dd>{% if certificate.renewed_from %}<dt>Renewed from</dt><dd><a href="{{ url_for('certificate_detail', certificate_id=certificate.renewed_from) }}">Previous certificate</a></dd>{% endif %}</dl></article>
 </section>
 {% if certificate.status == 'active' %}
 <section class="grid two">
+  {% if certificate.source != 'acme' %}
   <form class="panel form-grid" method="post" action="{{ url_for('renew_certificate', certificate_id=certificate.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Reissue with a new key</h2><p>Creates a replacement certificate and passively revokes this serial.</p><label>Export format<select name="export_format">{% for format in profiles[certificate.profile].export_formats %}<option value="{{ format }}">{{ format|upper }}</option>{% endfor %}</select></label><label>PKCS#12 password, if selected<input name="export_password" type="password" minlength="12" autocomplete="new-password"></label><button type="submit">Reissue certificate</button></form>
+  {% else %}
+  <article class="panel"><h2>Automatic renewal</h2><p>This certificate is managed by its ACME client. A replacement will be linked here automatically when the client renews it.</p></article>
+  {% endif %}
   <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this certificate? It will remain cryptographically valid until expiry, but step-ca will reject renewal."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke</h2><p>Blocks future renewal. Existing clients must enforce replacement because this CA uses passive revocation.</p><button class="danger" type="submit">Revoke certificate</button></form>
 </section>
 {% endif %}

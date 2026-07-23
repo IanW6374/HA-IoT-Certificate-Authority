@@ -6,5 +6,15 @@
 <article class="panel detail-list"><h2>Identity policy</h2><dl><dt>CA DNS name</dt><dd>{{ settings.ca_dns }}</dd><dt>Allowed DNS suffix</dt><dd>{{ settings.allowed_dns_suffix }}</dd><dt>Public SANs</dt><dd>{{ 'Allowed' if settings.allow_public_sans else 'Denied' }}</dd><dt>Initialized</dt><dd>{{ settings.initialized_at }}</dd></dl></article>
 <article class="panel detail-list"><h2>Services</h2><dl><dt>Engine status</dt><dd><span class="status {{ 'good' if ca_health.online else 'bad' }}">{{ 'Online' if ca_health.online else 'Offline' }}</span></dd><dt>CA URL</dt><dd class="mono wrap">{{ settings.public_ca_url }}</dd><dt>ACME directory</dt><dd class="mono wrap">{{ settings.acme_directory }}</dd></dl></article>
 </section>
-<section class="panel"><h2>Public trust bundle</h2><p>The root certificate contains no private material and can be distributed to every client that should trust this CA.</p><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">Root PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">Root DER</a></div></section>
+<section class="panel">
+  <h2>Public CA certificates</h2>
+  <p>The root is the trust anchor to install on clients. The intermediate is the online issuing CA. Use the CA chain PEM when an application expects both certificates in one file. None of these downloads contains private key material.</p>
+  <div class="actions">
+    <a class="button" href="{{ url_for('root_pem') }}">Root PEM</a>
+    <a class="button secondary" href="{{ url_for('root_der') }}">Root DER</a>
+    <a class="button secondary" href="{{ url_for('intermediate_pem') }}">Intermediate PEM</a>
+    <a class="button secondary" href="{{ url_for('intermediate_der') }}">Intermediate DER</a>
+    <a class="button secondary" href="{{ url_for('ca_chain_pem') }}">CA chain PEM</a>
+  </div>
+</section>
 {% endblock %}

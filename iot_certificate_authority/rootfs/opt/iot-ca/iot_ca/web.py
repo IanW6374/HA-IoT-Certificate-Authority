@@ -263,6 +263,33 @@ def create_app(*, data_root=None, service=None):
         _require_initialized(certificate_service)
         return _memory_download(certificate_service.root_trust("der"), "iot-ca-root.der", "application/pkix-cert")
 
+    @app.get("/trust/intermediate.pem")
+    def intermediate_pem():
+        _require_initialized(certificate_service)
+        return _memory_download(
+            certificate_service.intermediate_trust("pem"),
+            "iot-ca-intermediate.pem",
+            "application/x-pem-file",
+        )
+
+    @app.get("/trust/intermediate.der")
+    def intermediate_der():
+        _require_initialized(certificate_service)
+        return _memory_download(
+            certificate_service.intermediate_trust("der"),
+            "iot-ca-intermediate.der",
+            "application/pkix-cert",
+        )
+
+    @app.get("/trust/chain.pem")
+    def ca_chain_pem():
+        _require_initialized(certificate_service)
+        return _memory_download(
+            certificate_service.ca_chain(),
+            "iot-ca-chain.pem",
+            "application/x-pem-file",
+        )
+
     @app.get("/audit")
     def audit():
         _require_initialized(certificate_service)

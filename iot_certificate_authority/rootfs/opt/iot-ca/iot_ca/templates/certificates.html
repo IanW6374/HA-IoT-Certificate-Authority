@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Certificates · IoT Certificate Authority{% endblock %}
 {% block content %}
-<section class="hero split"><div><p class="eyebrow">Inventory</p><h1>Certificates</h1><p>Private keys are never retained after their one-time export.</p></div><a class="button primary" href="{{ url_for('new_certificate') }}">Issue certificate</a></section>
+<section class="hero split"><div><p class="eyebrow">Inventory</p><h1>Certificates</h1><p>Private keys are never retained. Certificates issued through ACME are imported automatically when the client downloads them.</p></div><a class="button primary" href="{{ url_for('new_certificate') }}">Issue certificate</a></section>
 <section class="panel">
-{% if certificates %}<div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>SANs</th><th>Expires</th><th>Status</th></tr></thead><tbody>
-{% for certificate in certificates %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a></td><td>{{ profiles[certificate.profile].name }}</td><td>{{ certificate.sans|join(', ') or '—' }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
+{% if certificates %}<div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>Source</th><th>SANs</th><th>Expires</th><th>Status</th></tr></thead><tbody>
+{% for certificate in certificates %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a></td><td>{{ profiles[certificate.profile].name }}</td><td>{{ certificate.source|upper }}</td><td>{{ certificate.sans|join(', ') or '—' }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
 </tbody></table></div>{% else %}<div class="empty"><p>No certificates have been issued.</p></div>{% endif %}
 </section>
 {% endblock %}

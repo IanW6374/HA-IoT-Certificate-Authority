@@ -92,6 +92,37 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"Export confirmed and removed from app storage", confirmed.data)
         self.assertIsNone(self.service.export_for_token(token))
 
+    def test_certificate_pages_show_inventory_source(self):
+        certificate_id, _token = self.service.issue(
+            profile_slug="tls-server",
+            common_name="portal.home.arpa",
+            sans="portal.home.arpa",
+            key_type="ec-p256",
+            validity_days=90,
+            export_format="pem",
+        )
+        listing = self.client.get("/certificates")
+        self.assertIn(b"Source", listing.data)
+        self.assertIn(b"MANUAL", listing.data)
+        detail = self.client.get("/certificates/" + certificate_id)
+        self.assertIn(b"Provisioner", detail.data)
+        self.assertIn(b"iot-ca-admin", detail.data)
+
+    def test_public_ca_certificate_downloads(self):
+        settings = self.client.get("/settings")
+        self.assertIn(b"Intermediate PEM", settings.data)
+        self.assertIn(b"CA chain PEM", settings.data)
+
+        intermediate = self.client.get("/trust/intermediate.pem")
+        self.assertEqual(intermediate.status_code, 200)
+        self.assertIn(b"iot-ca-intermediate.pem", intermediate.headers["Content-Disposition"].encode())
+        self.assertEqual(intermediate.data.count(b"-----BEGIN CERTIFICATE-----"), 1)
+
+        chain = self.client.get("/trust/chain.pem")
+        self.assertEqual(chain.status_code, 200)
+        self.assertIn(b"iot-ca-chain.pem", chain.headers["Content-Disposition"].encode())
+        self.assertEqual(chain.data.count(b"-----BEGIN CERTIFICATE-----"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

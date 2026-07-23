@@ -3,6 +3,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 
 from iot_ca.service import CertificateService
@@ -30,6 +31,8 @@ class ServiceTests(unittest.TestCase):
         )
         record = self.service.certificate(certificate_id)
         self.assertEqual(record["profile"], "hamd")
+        self.assertEqual(record["source"], "manual")
+        self.assertEqual(record["provisioner"], "iot-ca-admin")
         self.assertNotIn(b"PRIVATE KEY", record["certificate_pem"])
         export = self.service.export_for_token(token)
         with zipfile.ZipFile(export["path"]) as archive:
@@ -74,6 +77,22 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(self.service.certificate(new_id)["renewed_from"], old_id)
         self.assertTrue(self.engine.revoked)
         self.assertIsNotNone(self.service.export_for_token(token))
+
+    def test_public_ca_downloads_include_root_and_intermediate(self):
+        root = x509.load_pem_x509_certificate(self.service.root_trust())
+        intermediate = x509.load_pem_x509_certificate(self.service.intermediate_trust())
+        chain = self.service.ca_chain()
+
+        self.assertEqual(
+            self.service.root_trust("der"),
+            root.public_bytes(serialization.Encoding.DER),
+        )
+        self.assertEqual(
+            self.service.intermediate_trust("der"),
+            intermediate.public_bytes(serialization.Encoding.DER),
+        )
+        self.assertEqual(chain.count(b"-----BEGIN CERTIFICATE-----"), 2)
+        self.assertEqual(chain, self.service.intermediate_trust() + self.service.root_trust())
 
 
 if __name__ == "__main__":

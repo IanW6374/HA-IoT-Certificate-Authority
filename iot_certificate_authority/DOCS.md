@@ -12,6 +12,17 @@ It is not a public certificate authority and does not make certificates
 trusted by browsers automatically. Clients must explicitly install the root
 certificate.
 
+## CA certificate downloads
+
+The **Settings** page provides the root and intermediate CA certificates in
+PEM and DER formats. The root is the trust anchor that clients normally
+install. TLS servers should present the online intermediate with their leaf
+certificate.
+
+For software that expects the issuing CA and trust anchor in a single file,
+download **CA chain PEM**. It contains the intermediate first and the root
+second. These public certificate downloads never contain private key material.
+
 ## Installation
 
 1. Add `https://github.com/IanW6374/HA-IoT-Certificate-Authority` as a custom
@@ -142,9 +153,15 @@ Before using it, the ACME client must:
 2. trust the downloaded root certificate; and
 3. reach TCP port 9000 on the Home Assistant host.
 
-ACME issuance is performed by `step-ca` and is not added to the graphical
-inventory in this first release. Inventory and audit cover certificates issued
-through the graphical app.
+ACME issuance is performed by `step-ca`. Successful certificate downloads are
+captured from its structured audit log and added to the graphical inventory.
+Renewed certificates are linked to the previous serial and the previous record
+is marked superseded. Only the public certificate and metadata are stored; the
+ACME client's private key never leaves the client.
+
+Certificates issued before version 0.1.4 are added when the ACME client next
+renews them. They cannot be reconstructed from historical app logs that are no
+longer present in the add-on container.
 
 ## Backups and recovery
 

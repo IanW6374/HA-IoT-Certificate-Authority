@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.4
+
+- Import certificates downloaded through the Smallstep ACME endpoint into the
+  graphical certificate inventory.
+- Link ACME renewals to the previous certificate and mark the replaced record
+  as superseded.
+- Show certificate source and provisioner in inventory and lifecycle views.
+- Migrate existing inventory databases without losing certificate records.
+- Add individual intermediate downloads and a combined intermediate-plus-root
+  PEM chain alongside the root trust anchor.
+
 ## 0.1.3
 
 - Start `step-ca` directly on add-on restarts instead of invoking the offline

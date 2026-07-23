@@ -134,6 +134,8 @@ class CertificateService:
                 "created_at": utc_now(),
                 "renewed_from": renewed_from,
                 "revoked_at": None,
+                "source": "manual",
+                "provisioner": StepCAEngine.PROVISIONER,
             }
             self.inventory.add_certificate(record)
             filename = f"{self._safe_filename(request['common_name'])}-{profile.slug}.{extension}"
@@ -251,6 +253,15 @@ class CertificateService:
         return certificate.public_bytes(
             serialization.Encoding.DER if encoding == "der" else serialization.Encoding.PEM
         )
+
+    def intermediate_trust(self, encoding="pem"):
+        certificate = x509.load_pem_x509_certificate(self.engine.intermediate_certificate())
+        return certificate.public_bytes(
+            serialization.Encoding.DER if encoding == "der" else serialization.Encoding.PEM
+        )
+
+    def ca_chain(self):
+        return self.intermediate_trust("pem") + self.root_trust("pem")
 
     def export_for_token(self, token: str):
         self.cleanup_exports()

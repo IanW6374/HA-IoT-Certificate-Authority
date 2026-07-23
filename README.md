@@ -14,7 +14,7 @@ Ingress interface designed for IoT fleets such as HAMD.
 - DNS and IP Subject Alternative Name validation
 - PEM, DER, PKCS#12, and HAMD provisioning exports
 - Expiry dashboard, renewal/reissue, and passive revocation
-- Root trust-bundle downloads
+- Root, intermediate, and combined CA-chain downloads
 - One-time private-key downloads with automatic expiry
 - Append-only operator audit history
 - ACME endpoint provided by `step-ca`

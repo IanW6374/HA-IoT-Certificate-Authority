@@ -16,7 +16,9 @@ start_step_ca() {
         sleep 2
     done
     export STEPPATH="${DATA_ROOT}/step"
-    exec step-ca "${CA_CONFIG}" --password-file "${PASSWORD_FILE}"
+    python3 -m iot_ca.acme_inventory --prepare-config
+    step-ca "${CA_CONFIG}" --password-file "${PASSWORD_FILE}" 2>&1 \
+        | python3 -u -m iot_ca.acme_inventory --stream
 }
 
 shutdown() {

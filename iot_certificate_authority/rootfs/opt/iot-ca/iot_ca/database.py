@@ -80,6 +80,19 @@ class Inventory:
                 );
                 """
             )
+            columns = {
+                row["name"] for row in db.execute(
+                    "PRAGMA table_info(certificates)"
+                ).fetchall()
+            }
+            if "source" not in columns:
+                db.execute(
+                    "ALTER TABLE certificates ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'"
+                )
+            if "provisioner" not in columns:
+                db.execute(
+                    "ALTER TABLE certificates ADD COLUMN provisioner TEXT"
+                )
 
     def audit(self, action: str, object_id: str | None = None, *, success=True, detail=None):
         with self.connection() as db:
@@ -100,13 +113,56 @@ class Inventory:
             "id", "profile", "common_name", "sans_json", "key_type", "validity_days",
             "serial", "fingerprint", "not_before", "not_after", "status",
             "certificate_pem", "created_at", "renewed_from", "revoked_at",
+            "source", "provisioner",
         )
-        values = [record.get(column) for column in columns]
+        values = [
+            record.get(column, "manual" if column == "source" else None)
+            for column in columns
+        ]
         with self.connection() as db:
             db.execute(
                 f"INSERT INTO certificates({','.join(columns)}) VALUES({','.join('?' for _ in columns)})",
                 values,
             )
+
+    def import_certificate(self, record: dict):
+        """Insert an externally issued certificate once and link ACME renewals."""
+        with self.connection() as db:
+            existing = db.execute(
+                "SELECT id FROM certificates WHERE serial = ?",
+                (record["serial"],),
+            ).fetchone()
+            if existing:
+                return existing["id"], False
+
+            previous = db.execute(
+                """
+                SELECT id FROM certificates
+                WHERE source = 'acme' AND status = 'active'
+                  AND common_name = ? AND sans_json = ?
+                ORDER BY not_before DESC LIMIT 1
+                """,
+                (record["common_name"], record["sans_json"]),
+            ).fetchone()
+            if previous:
+                record["renewed_from"] = previous["id"]
+                db.execute(
+                    "UPDATE certificates SET status = 'superseded' WHERE id = ?",
+                    (previous["id"],),
+                )
+
+            columns = (
+                "id", "profile", "common_name", "sans_json", "key_type",
+                "validity_days", "serial", "fingerprint", "not_before",
+                "not_after", "status", "certificate_pem", "created_at",
+                "renewed_from", "revoked_at", "source", "provisioner",
+            )
+            db.execute(
+                f"INSERT INTO certificates({','.join(columns)}) "
+                f"VALUES({','.join('?' for _ in columns)})",
+                [record.get(column) for column in columns],
+            )
+        return record["id"], True
 
     def certificate(self, certificate_id: str):
         with self.connection() as db:

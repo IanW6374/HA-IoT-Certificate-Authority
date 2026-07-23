@@ -46,7 +46,9 @@ class EngineTests(unittest.TestCase):
             / "run.sh"
         ).read_text()
 
-        self.assertIn('exec step-ca "${CA_CONFIG}"', run_script)
+        self.assertIn('python3 -m iot_ca.acme_inventory --prepare-config', run_script)
+        self.assertIn('python3 -u -m iot_ca.acme_inventory --stream', run_script)
+        self.assertIn('step-ca "${CA_CONFIG}"', run_script)
         self.assertNotIn("apply_provisioner_policy()", run_script)
 
 
