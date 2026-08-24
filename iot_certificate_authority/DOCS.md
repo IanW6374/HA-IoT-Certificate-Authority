@@ -22,6 +22,8 @@ certificate.
 For software that expects the issuing CA and trust anchor in a single file,
 download **CA chain PEM**. It contains the intermediate first and the root
 second. These public certificate downloads never contain private key material.
+PEM downloads are Base64 text with certificate boundary markers; DER downloads
+are the binary X.509 representation.
 
 ## Installation
 
@@ -120,10 +122,16 @@ PEM, DER, and HAMD exports contain an unencrypted private key inside the ZIP.
 Download them only through trusted Home Assistant access and move them to the
 target device immediately.
 
-Certificate export links expire after 15 minutes and are deleted after the
-download response closes. The CA stores the public certificate and metadata,
-but never the leaf private key. A lost private key cannot be recovered; reissue
-the certificate with a new key.
+Certificate export links expire after 15 minutes. The protected export is
+deleted after the operator confirms it has been downloaded and stored safely.
+The CA stores the public certificate and metadata, but never the leaf private
+key. A lost private key cannot be recovered; reissue the certificate with a new
+key.
+
+After the original protected export has been cleared, open any certificate in
+the inventory to download its stored public certificate in PEM or DER format.
+These later downloads do not include a private key. Reissue the certificate if
+the private key is unavailable and a new identity package is required.
 
 ## Renewal and revocation
 
@@ -146,6 +154,9 @@ The Settings page displays the ACME directory URL:
 ```text
 https://iot-ca.home.arpa:9000/acme/acme/directory
 ```
+
+Use **Copy URL** on the Overview or Settings page to copy the complete directory
+URL without selecting it manually.
 
 Before using it, the ACME client must:
 

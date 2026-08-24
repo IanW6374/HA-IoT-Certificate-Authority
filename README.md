@@ -15,6 +15,7 @@ Ingress interface designed for IoT fleets such as HAMD.
 - PEM, DER, PKCS#12, and HAMD provisioning exports
 - Expiry dashboard, renewal/reissue, and passive revocation
 - Root, intermediate, and combined CA-chain downloads
+- PEM and DER downloads for public certificates already in inventory
 - One-time private-key downloads with automatic expiry
 - Append-only operator audit history
 - ACME endpoint provided by `step-ca`

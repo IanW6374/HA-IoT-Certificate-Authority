@@ -18,6 +18,7 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.utils import secure_filename
 
 from .profiles import PROFILES
 from .service import CertificateService
@@ -166,6 +167,27 @@ def create_app(*, data_root=None, service=None):
             abort(404)
         return render_template("certificate_detail.html", certificate=certificate)
 
+    @app.get("/certificates/<certificate_id>/download")
+    def download_certificate(certificate_id):
+        _require_initialized(certificate_service)
+        certificate = certificate_service.certificate(certificate_id)
+        if not certificate:
+            abort(404)
+        encoding = request.args.get("format", "pem").strip().lower()
+        if encoding not in {"pem", "der"}:
+            abort(400, "Certificate format must be PEM or DER")
+        filename = secure_filename(certificate["common_name"]) or "certificate"
+        mimetype = (
+            "application/pkix-cert"
+            if encoding == "der"
+            else "application/x-pem-file"
+        )
+        return _memory_download(
+            certificate_service.certificate_public_bytes(certificate_id, encoding),
+            f"{filename}.{encoding}",
+            mimetype,
+        )
+
     @app.post("/certificates/<certificate_id>/renew")
     def renew_certificate(certificate_id):
         _require_initialized(certificate_service)
@@ -304,6 +326,7 @@ def create_app(*, data_root=None, service=None):
             ca_health=certificate_service.engine.health(),
         )
 
+    @app.errorhandler(400)
     @app.errorhandler(403)
     @app.errorhandler(404)
     @app.errorhandler(409)

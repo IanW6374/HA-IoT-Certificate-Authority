@@ -226,6 +226,13 @@ class CertificateService:
     def certificate(self, certificate_id):
         return self.inventory.certificate(certificate_id)
 
+    def certificate_public_bytes(self, certificate_id, encoding="pem"):
+        record = self.certificate(certificate_id)
+        if not record:
+            raise ValueError("Certificate not found")
+        certificate = x509.load_pem_x509_certificate(record["certificate_pem"])
+        return certificate.public_bytes(self._public_certificate_encoding(encoding))
+
     def certificates(self):
         return self.inventory.certificates()
 
@@ -250,15 +257,11 @@ class CertificateService:
 
     def root_trust(self, encoding="pem"):
         certificate = x509.load_pem_x509_certificate(self.engine.root_certificate())
-        return certificate.public_bytes(
-            serialization.Encoding.DER if encoding == "der" else serialization.Encoding.PEM
-        )
+        return certificate.public_bytes(self._public_certificate_encoding(encoding))
 
     def intermediate_trust(self, encoding="pem"):
         certificate = x509.load_pem_x509_certificate(self.engine.intermediate_certificate())
-        return certificate.public_bytes(
-            serialization.Encoding.DER if encoding == "der" else serialization.Encoding.PEM
-        )
+        return certificate.public_bytes(self._public_certificate_encoding(encoding))
 
     def ca_chain(self):
         return self.intermediate_trust("pem") + self.root_trust("pem")
@@ -414,6 +417,15 @@ class CertificateService:
         return private_key.private_bytes(
             output_encoding, output_format, serialization.NoEncryption()
         )
+
+    @staticmethod
+    def _public_certificate_encoding(encoding):
+        normalized = str(encoding or "").strip().lower()
+        if normalized == "pem":
+            return serialization.Encoding.PEM
+        if normalized == "der":
+            return serialization.Encoding.DER
+        raise ValueError("Unsupported certificate format; choose PEM or DER")
 
     @staticmethod
     def _certificate_time(certificate, attribute):

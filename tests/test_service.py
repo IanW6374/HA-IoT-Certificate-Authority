@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 
 from cryptography import x509
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 
 from iot_ca.service import CertificateService
 from tests.helpers import FakeEngine
@@ -93,6 +93,30 @@ class ServiceTests(unittest.TestCase):
         )
         self.assertEqual(chain.count(b"-----BEGIN CERTIFICATE-----"), 2)
         self.assertEqual(chain, self.service.intermediate_trust() + self.service.root_trust())
+
+    def test_existing_certificate_exports_use_requested_encoding(self):
+        certificate_id, _ = self.service.issue(
+            profile_slug="tls-server",
+            common_name="existing.home.arpa",
+            sans="existing.home.arpa",
+            key_type="ec-p256",
+            validity_days=90,
+            export_format="pem",
+        )
+
+        pem = self.service.certificate_public_bytes(certificate_id, "PEM")
+        der = self.service.certificate_public_bytes(certificate_id, "DER")
+
+        self.assertTrue(pem.startswith(b"-----BEGIN CERTIFICATE-----"))
+        self.assertFalse(der.startswith(b"-----BEGIN CERTIFICATE-----"))
+        self.assertEqual(
+            x509.load_pem_x509_certificate(pem).fingerprint(hashes.SHA256()),
+            x509.load_der_x509_certificate(der).fingerprint(hashes.SHA256()),
+        )
+
+    def test_public_certificate_exports_reject_unknown_encoding(self):
+        with self.assertRaisesRegex(ValueError, "PEM or DER"):
+            self.service.root_trust("pkcs12")
 
 
 if __name__ == "__main__":

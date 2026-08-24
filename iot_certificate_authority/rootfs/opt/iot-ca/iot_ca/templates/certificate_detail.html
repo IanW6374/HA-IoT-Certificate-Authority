@@ -6,6 +6,14 @@
   <article class="panel detail-list"><h2>Identity</h2><dl><dt>Subject alternative names</dt><dd>{{ certificate.sans|join(', ') or 'None' }}</dd><dt>Key type</dt><dd>{{ certificate.key_type }}</dd><dt>Serial</dt><dd class="mono">{{ certificate.serial }}</dd><dt>SHA-256 fingerprint</dt><dd class="mono wrap">{{ certificate.fingerprint }}</dd></dl></article>
   <article class="panel detail-list"><h2>Lifecycle</h2><dl><dt>Issued</dt><dd>{{ certificate.not_before }}</dd><dt>Expires</dt><dd>{{ certificate.not_after }}</dd><dt>Validity profile</dt><dd>{{ certificate.validity_days }} days</dd><dt>Source</dt><dd>{{ certificate.source|upper }}</dd>{% if certificate.provisioner %}<dt>Provisioner</dt><dd>{{ certificate.provisioner }}</dd>{% endif %}<dt>Private key retained</dt><dd>No</dd>{% if certificate.renewed_from %}<dt>Renewed from</dt><dd><a href="{{ url_for('certificate_detail', certificate_id=certificate.renewed_from) }}">Previous certificate</a></dd>{% endif %}</dl></article>
 </section>
+<section class="panel">
+  <h2>Download public certificate</h2>
+  <p>Export this existing certificate for installation or inspection. Private key material is not retained and is not included.</p>
+  <div class="actions">
+    <a class="button" href="{{ url_for('download_certificate', certificate_id=certificate.id, format='pem') }}">Download PEM</a>
+    <a class="button secondary" href="{{ url_for('download_certificate', certificate_id=certificate.id, format='der') }}">Download DER</a>
+  </div>
+</section>
 {% if certificate.status == 'active' %}
 <section class="grid two">
   {% if certificate.source != 'acme' %}

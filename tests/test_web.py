@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from cryptography import x509
+
 from iot_ca.service import CertificateService
 from iot_ca.web import create_app
 from tests.helpers import FakeEngine
@@ -107,6 +109,23 @@ class WebTests(unittest.TestCase):
         detail = self.client.get("/certificates/" + certificate_id)
         self.assertIn(b"Provisioner", detail.data)
         self.assertIn(b"iot-ca-admin", detail.data)
+        self.assertIn(b"Download PEM", detail.data)
+        self.assertIn(b"Download DER", detail.data)
+
+        pem = self.client.get(
+            "/certificates/" + certificate_id + "/download?format=pem"
+        )
+        self.assertEqual(pem.status_code, 200)
+        self.assertEqual(pem.mimetype, "application/x-pem-file")
+        x509.load_pem_x509_certificate(pem.data)
+
+        der = self.client.get(
+            "/certificates/" + certificate_id + "/download?format=der"
+        )
+        self.assertEqual(der.status_code, 200)
+        self.assertEqual(der.mimetype, "application/pkix-cert")
+        self.assertNotIn(b"-----BEGIN CERTIFICATE-----", der.data)
+        x509.load_der_x509_certificate(der.data)
 
     def test_public_ca_certificate_downloads(self):
         settings = self.client.get("/settings")
@@ -122,6 +141,17 @@ class WebTests(unittest.TestCase):
         self.assertEqual(chain.status_code, 200)
         self.assertIn(b"iot-ca-chain.pem", chain.headers["Content-Disposition"].encode())
         self.assertEqual(chain.data.count(b"-----BEGIN CERTIFICATE-----"), 2)
+
+        root_der = self.client.get("/trust/root.der")
+        self.assertEqual(root_der.status_code, 200)
+        self.assertNotIn(b"-----BEGIN CERTIFICATE-----", root_der.data)
+        x509.load_der_x509_certificate(root_der.data)
+
+    def test_acme_url_has_copy_controls(self):
+        for path in ("/", "/settings"):
+            response = self.client.get(path)
+            self.assertIn(b'data-copy-target="#acme-directory"', response.data)
+            self.assertIn(b"Copy URL", response.data)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Download any stored public certificate from its inventory record as PEM or
+  binary DER without reissuing it.
+- Add copy-to-clipboard controls for the ACME directory URL.
+- Validate certificate encodings strictly and verify that Root CA DER downloads
+  contain DER rather than PEM data.
+
 ## 0.1.4
 
 - Import certificates downloaded through the Smallstep ACME endpoint into the
