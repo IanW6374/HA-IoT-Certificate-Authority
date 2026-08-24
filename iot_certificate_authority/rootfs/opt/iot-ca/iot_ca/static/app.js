@@ -8,6 +8,7 @@
   });
 
   document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    const originalLabel = button.getAttribute("aria-label") || "Copy";
     button.addEventListener("click", async () => {
       const source = document.querySelector(button.dataset.copyTarget);
       const status = button.parentElement.querySelector(".copy-status");
@@ -28,15 +29,21 @@
           temporary.remove();
           if (!copied) throw new Error("Clipboard copy failed");
         }
-        button.textContent = "Copied";
+        button.classList.add("copied");
+        button.setAttribute("aria-label", "Copied");
         if (status) status.textContent = "ACME URL copied to clipboard";
       } catch (_error) {
         if (status) status.textContent = "Could not copy automatically; select and copy the URL";
       }
       window.setTimeout(() => {
-        button.textContent = "Copy URL";
+        button.classList.remove("copied");
+        button.setAttribute("aria-label", originalLabel);
       }, 2000);
     });
+  });
+
+  document.querySelectorAll("[data-auto-submit]").forEach((control) => {
+    control.addEventListener("change", () => control.form.requestSubmit());
   });
 
   const form = document.getElementById("certificate-form");

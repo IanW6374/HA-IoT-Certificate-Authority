@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Filter the certificate inventory by status, showing active certificates by
+  default.
+- Replace ACME clipboard text buttons with compact copy icons.
+
 ## 0.2.0
 
 - Download any stored public certificate from its inventory record as PEM or

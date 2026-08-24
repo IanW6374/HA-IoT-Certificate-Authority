@@ -127,6 +127,38 @@ class WebTests(unittest.TestCase):
         self.assertNotIn(b"-----BEGIN CERTIFICATE-----", der.data)
         x509.load_der_x509_certificate(der.data)
 
+    def test_certificate_status_filter_defaults_to_active(self):
+        active_id, _ = self.service.issue(
+            profile_slug="tls-client",
+            common_name="active-client",
+            sans="",
+            key_type="ec-p256",
+            validity_days=90,
+            export_format="pem",
+        )
+        revoked_id, _ = self.service.issue(
+            profile_slug="tls-client",
+            common_name="revoked-client",
+            sans="",
+            key_type="ec-p256",
+            validity_days=90,
+            export_format="pem",
+        )
+        self.service.revoke(revoked_id)
+
+        default_listing = self.client.get("/certificates")
+        self.assertIn(active_id.encode(), default_listing.data)
+        self.assertNotIn(revoked_id.encode(), default_listing.data)
+        self.assertIn(b'<option value="active" selected>', default_listing.data)
+
+        revoked_listing = self.client.get("/certificates?status=revoked")
+        self.assertNotIn(active_id.encode(), revoked_listing.data)
+        self.assertIn(revoked_id.encode(), revoked_listing.data)
+
+        all_listing = self.client.get("/certificates?status=all")
+        self.assertIn(active_id.encode(), all_listing.data)
+        self.assertIn(revoked_id.encode(), all_listing.data)
+
     def test_public_ca_certificate_downloads(self):
         settings = self.client.get("/settings")
         self.assertIn(b"Intermediate PEM", settings.data)
@@ -151,7 +183,8 @@ class WebTests(unittest.TestCase):
         for path in ("/", "/settings"):
             response = self.client.get(path)
             self.assertIn(b'data-copy-target="#acme-directory"', response.data)
-            self.assertIn(b"Copy URL", response.data)
+            self.assertIn(b'aria-label="Copy ACME directory URL"', response.data)
+            self.assertIn(b'class="copy-icon"', response.data)
 
 
 if __name__ == "__main__":

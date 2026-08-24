@@ -126,9 +126,22 @@ def create_app(*, data_root=None, service=None):
     @app.get("/certificates")
     def certificates():
         _require_initialized(certificate_service)
+        selected_status = request.args.get("status", "active").strip().lower()
+        status_filters = ("active", "revoked", "superseded", "all")
+        if selected_status not in status_filters:
+            abort(400, "Unknown certificate status filter")
+        inventory = certificate_service.certificates()
+        if selected_status != "all":
+            inventory = [
+                certificate
+                for certificate in inventory
+                if certificate["status"] == selected_status
+            ]
         return render_template(
             "certificates.html",
-            certificates=certificate_service.certificates(),
+            certificates=inventory,
+            selected_status=selected_status,
+            status_filters=status_filters,
         )
 
     @app.route("/certificates/new", methods=["GET", "POST"])

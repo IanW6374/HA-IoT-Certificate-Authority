@@ -135,6 +135,9 @@ the private key is unavailable and a new identity package is required.
 
 ## Renewal and revocation
 
+The certificate inventory shows active records by default. Use the **Status**
+filter to view revoked, superseded, or all certificates.
+
 Select an active certificate and choose **Reissue with a new key**. The app:
 
 1. creates a new key and certificate with the same profile and identity;
@@ -155,8 +158,8 @@ The Settings page displays the ACME directory URL:
 https://iot-ca.home.arpa:9000/acme/acme/directory
 ```
 
-Use **Copy URL** on the Overview or Settings page to copy the complete directory
-URL without selecting it manually.
+Use the copy icon beside the URL on the Overview or Settings page to copy the
+complete directory URL without selecting it manually.
 
 Before using it, the ACME client must:
 
