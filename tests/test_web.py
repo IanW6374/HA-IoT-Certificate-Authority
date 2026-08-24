@@ -150,6 +150,7 @@ class WebTests(unittest.TestCase):
         self.assertIn(active_id.encode(), default_listing.data)
         self.assertNotIn(revoked_id.encode(), default_listing.data)
         self.assertIn(b'<option value="active" selected>', default_listing.data)
+        self.assertNotIn(b"Apply filter", default_listing.data)
 
         revoked_listing = self.client.get("/certificates?status=revoked")
         self.assertNotIn(active_id.encode(), revoked_listing.data)

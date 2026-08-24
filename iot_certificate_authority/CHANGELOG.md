@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Remove the redundant Apply filter button because certificate status changes
+  are applied automatically from the dropdown.
+
 ## 0.2.1
 
 - Filter the certificate inventory by status, showing active certificates by
