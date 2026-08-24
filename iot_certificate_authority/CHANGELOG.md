@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
 
 - Filter the certificate inventory by status, showing active certificates by
   default.
