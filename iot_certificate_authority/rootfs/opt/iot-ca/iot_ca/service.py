@@ -138,7 +138,8 @@ class CertificateService:
                 "provisioner": StepCAEngine.PROVISIONER,
             }
             self.inventory.add_certificate(record)
-            filename = f"{self._safe_filename(request['common_name'])}-{profile.slug}.{extension}"
+            profile_filename = profile.slug.replace("_", "-")
+            filename = f"{self._safe_filename(request['common_name'])}-{profile_filename}.{extension}"
             token = self._store_export(archive, kind="certificate", filename=filename)
             self.inventory.audit(
                 "certificate.issue",

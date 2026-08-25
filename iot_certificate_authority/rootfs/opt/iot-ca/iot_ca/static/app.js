@@ -60,7 +60,7 @@
     values.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value.toUpperCase();
+      option.textContent = value === "iot_md" ? "IoT MD" : value.toUpperCase();
       option.selected = value === (current || selected);
       select.append(option);
     });

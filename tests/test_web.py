@@ -75,7 +75,7 @@ class WebTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Certificate package is ready", response.data)
-        self.assertIn(b"iot-md-web-test-iot_md.zip", response.data)
+        self.assertIn(b"iot-md-web-test-iot-md.zip", response.data)
         with self.client.session_transaction() as browser_session:
             token = browser_session["pending_export_token"]
             csrf_token = browser_session["csrf_token"]
@@ -126,6 +126,25 @@ class WebTests(unittest.TestCase):
         self.assertEqual(der.mimetype, "application/pkix-cert")
         self.assertNotIn(b"-----BEGIN CERTIFICATE-----", der.data)
         x509.load_der_x509_certificate(der.data)
+
+    def test_iot_md_export_uses_human_readable_label(self):
+        certificate_id, _token = self.service.issue(
+            profile_slug="iot_md",
+            common_name="iot-md-label-test",
+            sans="iot-md-label-test.home.arpa",
+            key_type="rsa-2048",
+            validity_days=365,
+            export_format="iot_md",
+        )
+        detail = self.client.get("/certificates/" + certificate_id)
+        self.assertIn(b">IoT MD<", detail.data)
+        self.assertNotIn(b"IOT" + b"_MD", detail.data)
+
+        script = (
+            Path(__file__).parents[1]
+            / "iot_certificate_authority/rootfs/opt/iot-ca/iot_ca/static/app.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('value === "iot_md" ? "IoT MD"', script)
 
     def test_certificate_status_filter_defaults_to_active(self):
         active_id, _ = self.service.issue(

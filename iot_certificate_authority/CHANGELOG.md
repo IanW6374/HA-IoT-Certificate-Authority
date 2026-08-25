@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Render the IoT MD provisioning export with the correct display name.
+- Use `iot-md` rather than an internal identifier in downloaded package names.
+
 ## 0.3.0
 
 - Establish the clean IoT Certificate Authority application identity.
