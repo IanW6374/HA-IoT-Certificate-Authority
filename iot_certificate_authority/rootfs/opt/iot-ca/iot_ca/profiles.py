@@ -27,10 +27,10 @@ class CertificateProfile:
 
 
 PROFILES = {
-    "hamd": CertificateProfile(
-        slug="hamd",
-        name="HAMD device portal",
-        description="RSA certificate and DER provisioning files for a HAMD HTTPS portal.",
+    "iot_md": CertificateProfile(
+        slug="iot_md",
+        name="IoT MD device portal",
+        description="RSA certificate and DER provisioning files for an IoT MD HTTPS portal.",
         default_days=365,
         maximum_days=825,
         key_types=("rsa-2048",),
@@ -38,7 +38,7 @@ PROFILES = {
         require_san=True,
         server_auth=True,
         client_auth=False,
-        export_formats=("hamd", "pem", "der", "pkcs12"),
+        export_formats=("iot_md", "pem", "der", "pkcs12"),
     ),
     "tls-server": CertificateProfile(
         slug="tls-server",

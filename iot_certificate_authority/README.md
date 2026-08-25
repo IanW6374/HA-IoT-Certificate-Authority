@@ -3,7 +3,7 @@
 Run a private, graphical IoT certificate authority on Home Assistant using the
 Smallstep `step-ca` signing engine.
 
-The app is designed for local infrastructure and device fleets. HAMD devices
+The app is designed for local infrastructure and device fleets. IoT MD devices
 have a dedicated export profile, while generic TLS and MQTT profiles cover
 other services and clients.
 

@@ -49,4 +49,4 @@ jobs:
           platforms: linux/amd64
           build-args: |
             BUILD_ARCH=amd64
-            BUILD_VERSION=0.1.4
+            BUILD_VERSION=0.3.0

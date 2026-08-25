@@ -20,17 +20,17 @@ class ServiceTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_hamd_export_and_private_key_disposal(self):
+    def test_iot_md_export_and_private_key_disposal(self):
         certificate_id, token = self.service.issue(
-            profile_slug="hamd",
-            common_name="hamd-a1b2c3",
-            sans="hamd-a1b2c3.home.arpa,192.168.1.20",
+            profile_slug="iot_md",
+            common_name="iot-md-a1b2c3",
+            sans="iot-md-a1b2c3.home.arpa,192.168.1.20",
             key_type="rsa-2048",
             validity_days=365,
-            export_format="hamd",
+            export_format="iot_md",
         )
         record = self.service.certificate(certificate_id)
-        self.assertEqual(record["profile"], "hamd")
+        self.assertEqual(record["profile"], "iot_md")
         self.assertEqual(record["source"], "manual")
         self.assertEqual(record["provisioner"], "iot-ca-admin")
         self.assertNotIn(b"PRIVATE KEY", record["certificate_pem"])

@@ -27,6 +27,12 @@ are the binary X.509 representation.
 
 ## Installation
 
+Version 0.3.0 establishes the clean IoT Certificate Authority application
+identity and IoT MD profile identifiers. Remove an earlier installation and
+install 0.3.0 fresh instead of carrying its application data forward. A fresh
+authority creates a new trust root, so replace certificates and trust anchors
+on connected services and devices after initialization.
+
 1. Add `https://github.com/IanW6374/HA-IoT-Certificate-Authority` as a custom
    repository in the Home Assistant App Store.
 2. Install **IoT Certificate Authority**.
@@ -76,10 +82,10 @@ the old token and produce another link to the same encrypted archive.
 
 ## Certificate profiles
 
-### HAMD device portal
+### IoT MD device portal
 
-Produces an RSA-2048 portal identity compatible with HAMD's current
-traditional-RSA DER requirement. The HAMD export contains:
+Produces an RSA-2048 portal identity compatible with the IoT MD
+traditional-RSA DER requirement. The IoT MD export contains:
 
 ```text
 web.crt.der
@@ -95,8 +101,8 @@ files establish trust in services using this authority. If MQTT and the update
 server use different authorities, replace their CA files with those services'
 actual trust roots before provisioning the device.
 
-Install the files through the HAMD first-boot certificate page. The DNS SAN
-should match the name operators use to open the HAMD portal. Prefer a stable
+Install the files through the IoT MD first-boot certificate page. The DNS SAN
+should match the name operators use to open the IoT MD portal. Prefer a stable
 local DNS name over a DHCP address.
 
 ### Generic TLS server
@@ -116,9 +122,9 @@ name is also issued as the SAN required by the Smallstep authorization token.
 - **DER**: binary certificate and private key plus intermediate and root.
 - **PKCS#12**: password-encrypted identity and chain. A 12-character minimum
   password is required and not stored.
-- **HAMD**: fixed DER filenames expected by the HAMD setup workflow.
+- **IoT MD**: fixed DER filenames expected by the IoT MD setup workflow.
 
-PEM, DER, and HAMD exports contain an unencrypted private key inside the ZIP.
+PEM, DER, and IoT MD exports contain an unencrypted private key inside the ZIP.
 Download them only through trusted Home Assistant access and move them to the
 target device immediately.
 

@@ -33,7 +33,7 @@ data directory. Hardware-backed signing is outside the first-release scope.
 - Use local DNS and stable device names rather than bypassing hostname checks.
 - Prefer the shortest certificate lifetime that the device renewal workflow
   can safely support.
-- Treat PEM, DER, and HAMD exports as secrets because they contain private keys.
+- Treat PEM, DER, and IoT MD exports as secrets because they contain private keys.
 
 ## Revocation limitation
 

@@ -3,16 +3,16 @@
 A graphical private certificate authority for Home Assistant OS and
 Supervised installations. The app uses Smallstep `step-ca` for signing and
 certificate lifecycle operations, with an administrator-only Home Assistant
-Ingress interface designed for IoT fleets such as HAMD.
+Ingress interface designed for IoT fleets such as IoT MD.
 
 ## First-release capabilities
 
 - Guided private CA initialization with an offline-root export
 - Online intermediate CA hosted by Home Assistant
 - Device and certificate inventory
-- HAMD, generic TLS server, generic TLS client, and MQTT client profiles
+- IoT MD device portal, generic TLS server, generic TLS client, and MQTT client profiles
 - DNS and IP Subject Alternative Name validation
-- PEM, DER, PKCS#12, and HAMD provisioning exports
+- PEM, DER, PKCS#12, and IoT MD provisioning exports
 - Expiry dashboard, renewal/reissue, and passive revocation
 - Root, intermediate, and combined CA-chain downloads
 - PEM and DER downloads for public certificates already in inventory

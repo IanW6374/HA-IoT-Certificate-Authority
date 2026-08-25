@@ -346,7 +346,7 @@ class CertificateService:
                 archive.writestr("private-key.der", self._private_key_bytes(private_key, "der"))
                 archive.writestr("intermediate-ca.der", intermediate.public_bytes(serialization.Encoding.DER))
                 archive.writestr("root-ca.der", root.public_bytes(serialization.Encoding.DER))
-            elif export_format == "hamd":
+            elif export_format == "iot_md":
                 archive.writestr("web.crt.der", certificate.public_bytes(serialization.Encoding.DER))
                 archive.writestr("web.key.der", self._private_key_bytes(private_key, "der"))
                 archive.writestr("mqtt-ca.der", root.public_bytes(serialization.Encoding.DER))

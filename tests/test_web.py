@@ -64,18 +64,18 @@ class WebTests(unittest.TestCase):
             "/certificates/new",
             data={
                 "csrf_token": self.csrf(),
-                "profile": "hamd",
-                "common_name": "hamd-web-test",
-                "sans": "hamd-web-test.home.arpa",
+                "profile": "iot_md",
+                "common_name": "iot-md-web-test",
+                "sans": "iot-md-web-test.home.arpa",
                 "key_type": "rsa-2048",
                 "validity_days": "365",
-                "export_format": "hamd",
+                "export_format": "iot_md",
             },
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Certificate package is ready", response.data)
-        self.assertIn(b"hamd-web-test-hamd.zip", response.data)
+        self.assertIn(b"iot-md-web-test-iot_md.zip", response.data)
         with self.client.session_transaction() as browser_session:
             token = browser_session["pending_export_token"]
             csrf_token = browser_session["csrf_token"]

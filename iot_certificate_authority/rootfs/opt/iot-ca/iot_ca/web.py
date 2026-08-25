@@ -148,7 +148,7 @@ def create_app(*, data_root=None, service=None):
     def new_certificate():
         _require_initialized(certificate_service)
         if request.method == "GET":
-            selected = request.args.get("profile", "hamd")
+            selected = request.args.get("profile", "iot_md")
             return render_template("new_certificate.html", selected_profile=selected)
         try:
             certificate_id, token = certificate_service.issue(
@@ -168,7 +168,7 @@ def create_app(*, data_root=None, service=None):
             flash(str(exc), "error")
             return render_template(
                 "new_certificate.html",
-                selected_profile=request.form.get("profile", "hamd"),
+                selected_profile=request.form.get("profile", "iot_md"),
                 form=request.form,
             ), 400
 

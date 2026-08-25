@@ -19,7 +19,7 @@
   <div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>Expires</th><th>Status</th></tr></thead><tbody>
   {% for certificate in dashboard.recent %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a></td><td>{{ profiles[certificate.profile].name }} · {{ certificate.source|upper }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
   </tbody></table></div>
-  {% else %}<div class="empty"><p>No certificates have been issued.</p><a class="button" href="{{ url_for('new_certificate', profile='hamd') }}">Issue the first one</a></div>{% endif %}
+  {% else %}<div class="empty"><p>No certificates have been issued.</p><a class="button" href="{{ url_for('new_certificate', profile='iot_md') }}">Issue the first one</a></div>{% endif %}
 </section>
 <section class="grid two">
   <article class="panel"><p class="eyebrow">Trust</p><h2>Root certificate</h2><p>Install this public certificate in devices and clients that should trust identities issued here.</p><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">Download PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">Download DER</a></div></article>
