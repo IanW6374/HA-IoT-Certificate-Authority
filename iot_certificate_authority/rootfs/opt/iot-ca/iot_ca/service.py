@@ -204,15 +204,15 @@ class CertificateService:
         certificate_id = str(uuid.uuid4())
         api_certificate_id = str(uuid.uuid4())
         try:
-            result = self.external_acme.issue(values)
-            certificate = result.certificate
-            names = self._certificate_dns_names(certificate) or values
-            common_name = names[0]
             api_hostname = str(api_hostname or "").strip().lower().rstrip(".")
             if not api_hostname.endswith(".local") or "." in api_hostname[:-6]:
                 raise ValueError(
                     "The private Device API hostname must be a single-label .local name"
                 )
+            result = self.external_acme.issue(values)
+            certificate = result.certificate
+            names = self._certificate_dns_names(certificate) or values
+            common_name = names[0]
             api_private_key = self._private_key("rsa-2048")
             api_csr = self._csr(
                 api_private_key, common_name=api_hostname, sans=[api_hostname],

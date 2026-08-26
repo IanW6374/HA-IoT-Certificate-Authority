@@ -46,6 +46,76 @@
     control.addEventListener("change", () => control.form.requestSubmit());
   });
 
+  const publicCertificateForm = document.getElementById("public-certificate-form");
+  if (publicCertificateForm) {
+    const portalHost = document.getElementById("public-portal-host");
+    const apiHostname = document.getElementById("public-api-hostname");
+    const validation = document.getElementById("public-certificate-validation");
+    const submitButton = document.getElementById("prepare-public-certificate");
+    let apiHostnameEdited = Boolean(apiHostname.value.trim());
+
+    function clearValidation() {
+      validation.hidden = true;
+      validation.textContent = "";
+      portalHost.removeAttribute("aria-invalid");
+      apiHostname.removeAttribute("aria-invalid");
+    }
+
+    function reject(field, message) {
+      validation.textContent = message;
+      validation.hidden = false;
+      field.setAttribute("aria-invalid", "true");
+      field.focus();
+    }
+
+    apiHostname.addEventListener("input", () => {
+      apiHostnameEdited = true;
+      clearValidation();
+    });
+
+    portalHost.addEventListener("input", () => {
+      clearValidation();
+      if (apiHostnameEdited) return;
+      const host = portalHost.value.trim();
+      if (/^[A-Za-z0-9-]+$/.test(host)) {
+        apiHostname.value = `${host}.local`;
+      } else {
+        apiHostname.value = "";
+      }
+    });
+
+    publicCertificateForm.addEventListener("submit", (event) => {
+      clearValidation();
+      const host = portalHost.value.trim().toLowerCase();
+      const privateName = apiHostname.value.trim().toLowerCase().replace(/[.]$/, "");
+      portalHost.value = host;
+      apiHostname.value = privateName;
+
+      if (!host) {
+        event.preventDefault();
+        reject(portalHost, "Enter the public portal host. The example text is not submitted as a value.");
+        return;
+      }
+      if (!/^(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])$/.test(host)) {
+        event.preventDefault();
+        reject(portalHost, "Use a single DNS host label containing only letters, numbers, or internal hyphens.");
+        return;
+      }
+      if (!/^[A-Za-z0-9-]+[.]local$/.test(privateName)) {
+        event.preventDefault();
+        reject(apiHostname, "Enter a single-label private hostname ending in .local, for example device.local.");
+        return;
+      }
+
+      validation.classList.remove("error");
+      validation.classList.add("info");
+      validation.textContent = "Validating DNS and requesting the certificate. This can take up to a minute.";
+      validation.hidden = false;
+      submitButton.disabled = true;
+      submitButton.textContent = "Preparing certificate…";
+    });
+  }
+
   const form = document.getElementById("certificate-form");
   if (!form) return;
   const profile = document.getElementById("profile");

@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import Mock
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -159,6 +160,21 @@ class ServiceTests(unittest.TestCase):
                 public_key.public_key().public_numbers(),
                 api_key.public_key().public_numbers(),
             )
+
+    def test_public_portal_rejects_invalid_private_name_before_acme_request(self):
+        external_acme = FakeExternalACME()
+        external_acme.issue = Mock(side_effect=AssertionError("ACME must not be called"))
+        service = CertificateService(
+            self.root, engine=self.engine, external_acme=external_acme
+        )
+
+        with self.assertRaisesRegex(ValueError, "single-label .local"):
+            service.issue_public_portal(
+                common_name="device.example.com",
+                sans="",
+                api_hostname="",
+            )
+        external_acme.issue.assert_not_called()
 
 
 if __name__ == "__main__":

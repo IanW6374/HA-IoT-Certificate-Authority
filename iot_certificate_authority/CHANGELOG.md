@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.4
+
+- Show public-certificate form validation errors inline inside Home Assistant
+  ingress instead of relying on browser validation popovers.
+- Accept only the public portal host label, append the CA-configured DNS suffix
+  server-side, and derive the private `.local` hostname until overridden.
+- Show visible progress and prevent duplicate certificate requests while DNS
+  validation and ACME issuance are running.
+- Validate the private hostname before placing an external ACME order.
+
 ## 0.3.3
 
 - Make every non-secret CA identity default a submitted value on initial setup.

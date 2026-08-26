@@ -262,7 +262,7 @@ class WebTests(unittest.TestCase):
             "/public-certificates/new",
             data={
                 "csrf_token": self.csrf(),
-                "common_name": "device.example.com",
+                "portal_host": "device",
                 "api_hostname": "device.local",
                 "sans": "alias.example.com",
             },
@@ -271,6 +271,56 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Certificate package is ready", response.data)
         self.assertIn(b"device.example.com-public-portal.zip", response.data)
+
+    def test_public_portal_form_has_ingress_safe_inline_validation(self):
+        response = self.client.get("/public-certificates/new")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="public-certificate-form"', response.data)
+        self.assertIn(b'action="/public-certificates/new"', response.data)
+        self.assertIn(b'id="public-certificate-validation"', response.data)
+        self.assertIn(b'id="public-portal-host"', response.data)
+        self.assertIn(b'name="portal_host"', response.data)
+        self.assertIn(b'.example.com</span>', response.data)
+        self.assertIn(b'id="public-api-hostname"', response.data)
+
+        script = self.client.get("/static/app.js")
+        self.assertIn(b"The example text is not submitted as a value", script.data)
+        self.assertIn(b"Preparing certificate", script.data)
+        script.close()
+
+    def test_public_portal_route_rejects_more_than_one_host_label(self):
+        response = self.client.post(
+            "/public-certificates/new",
+            data={
+                "csrf_token": self.csrf(),
+                "portal_host": "device.other",
+                "api_hostname": "device.local",
+                "sans": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"must be one DNS label", response.data)
+
+    def test_public_portal_route_derives_private_hostname_without_javascript(self):
+        response = self.client.post(
+            "/public-certificates/new",
+            data={
+                "csrf_token": self.csrf(),
+                "portal_host": "device",
+                "api_hostname": "",
+                "sans": "",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        private_identity = next(
+            item for item in self.service.certificates()
+            if item["provisioner"] == "iot-md-public-profile"
+        )
+        self.assertEqual(private_identity["common_name"], "device.local")
 
 
 if __name__ == "__main__":

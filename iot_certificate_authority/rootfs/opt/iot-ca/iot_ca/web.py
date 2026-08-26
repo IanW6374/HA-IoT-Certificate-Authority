@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from pathlib import Path
 
@@ -182,9 +183,20 @@ def create_app(*, data_root=None, service=None):
         if request.method == "GET":
             return render_template("new_public_certificate.html", external=external)
         try:
+            portal_host = request.form.get("portal_host", "").strip().lower()
+            if not re.fullmatch(
+                r"(?:[a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])",
+                portal_host,
+            ):
+                raise ValueError(
+                    "The public portal host must be one DNS label containing only "
+                    "letters, numbers, or internal hyphens"
+                )
+            common_name = f"{portal_host}.{external['zone']}" if portal_host else ""
+            api_hostname = request.form.get("api_hostname", "").strip()
             certificate_id, token = certificate_service.issue_public_portal(
-                common_name=request.form.get("common_name", ""),
-                api_hostname=request.form.get("api_hostname", ""),
+                common_name=common_name,
+                api_hostname=api_hostname or f"{portal_host}.local",
                 sans=request.form.get("sans", ""),
             )
             session["pending_export_token"] = token
