@@ -151,7 +151,7 @@ class ExternalACME:
                 raise ValueError("Public portal names must be valid DNS names")
             base = name[2:] if name.startswith("*.") else name
             if base == zone or not base.endswith("." + zone):
-                raise ValueError("Public portal names must be within the configured Cloudflare zone")
+                raise ValueError("Public portal names must be within the configured DNS suffix")
             if name not in result:
                 result.append(name)
         if not result or len(result) > 10:

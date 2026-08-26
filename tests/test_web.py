@@ -35,6 +35,30 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"Certificate operations at a glance", response.data)
         self.assertIn(b"/api/hassio_ingress/test/certificates", response.data)
 
+    def test_initial_setup_renders_submitable_identity_defaults(self):
+        engine = FakeEngine()
+        engine.initialized = False
+        service = CertificateService(
+            Path(self.temporary.name) / "uninitialized",
+            engine=engine, external_acme=FakeExternalACME(),
+        )
+        app = create_app(
+            data_root=Path(self.temporary.name) / "uninitialized", service=service
+        )
+        response = app.test_client().get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            b'name="ca_name" required minlength="3" maxlength="64" '
+            b'value="Home IoT CA"', response.data
+        )
+        self.assertIn(
+            b'name="ca_dns" required value="iot-ca.home.arpa"', response.data
+        )
+        self.assertIn(
+            b'name="allowed_dns_suffix" required value="home.arpa"', response.data
+        )
+
     def test_post_requires_csrf(self):
         response = self.client.post("/certificates/new", data={})
         self.assertEqual(response.status_code, 403)
@@ -212,6 +236,11 @@ class WebTests(unittest.TestCase):
         response = self.client.get("/settings")
         self.assertIn(b"Public portal certificates", response.data)
         self.assertIn(b"Cloudflare DNS API token", response.data)
+        self.assertIn(b"Allowed public portal DNS suffix", response.data)
+        self.assertIn(b"Account ID, not a Client ID", response.data)
+        self.assertIn(b"no separate Home Assistant integration", response.data)
+        self.assertIn("••••••••••••".encode(), response.data)
+        self.assertNotIn(b"Configured", response.data)
         self.assertNotIn(b"dns-secret", response.data)
 
         saved = self.client.post(

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.3
+
+- Make every non-secret CA identity default a submitted value on initial setup.
+- Display configured Cloudflare credentials as masked password placeholders.
+- Clarify Cloudflare Account ID versus Client ID and document that lego does
+  not need either identifier for API-token DNS operations.
+- Separate the allowed public portal DNS suffix from the authoritative
+  Cloudflare zone in labels and guidance.
+- Explain that the built-in ACME client creates the Let’s Encrypt account from
+  the configured email without a separate Home Assistant integration.
+
 ## 0.3.2
 
 - Add optional Let’s Encrypt issuance through Cloudflare DNS-01 with scoped,

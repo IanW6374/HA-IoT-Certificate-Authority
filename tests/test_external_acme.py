@@ -89,7 +89,7 @@ class ExternalACMETests(unittest.TestCase):
             enabled=True, email="admin@example.com", zone="example.com",
             environment="staging", terms_accepted=True, dns_token="dns-secret",
         )
-        with self.assertRaisesRegex(ValueError, "configured Cloudflare zone"):
+        with self.assertRaisesRegex(ValueError, "configured DNS suffix"):
             client.issue(["device.other.example"])
 
 

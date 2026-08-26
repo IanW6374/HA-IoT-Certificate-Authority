@@ -9,7 +9,7 @@
 <form class="panel form-grid narrow" method="post" action="{{ url_for('setup') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>CA display name<input name="ca_name" required minlength="3" maxlength="64" value="Home IoT CA"></label>
-  <label>CA DNS name<input name="ca_dns" required placeholder="iot-ca.home.arpa"></label>
+  <label>CA DNS name<input name="ca_dns" required value="iot-ca.home.arpa"></label>
   <label>Allowed device DNS suffix<input name="allowed_dns_suffix" required value="home.arpa"><span class="help">Certificate DNS names are restricted to this suffix by default.</span></label>
   <label>Offline-root export passphrase<input name="root_export_passphrase" type="password" required minlength="16" autocomplete="new-password"><span class="help">Not stored. Losing it makes the encrypted offline root unusable.</span></label>
   <label>Confirm passphrase<input name="confirm_passphrase" type="password" required minlength="16" autocomplete="new-password"></label>

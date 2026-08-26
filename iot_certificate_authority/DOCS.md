@@ -109,11 +109,21 @@ local DNS name over a DHCP address.
 ### IoT MD public portal
 
 Enable **Settings → Public portal certificates** only after creating a
-Cloudflare API token scoped to the required zone. A single token may have
+Cloudflare API token scoped to the authoritative zone. A single token may have
 `Zone / Zone / Read` and `Zone / DNS / Edit`, or those permissions may be split
 between separate Zone and DNS tokens. The app stores tokens in mode-0600 files,
 passes them to the ACME client by file reference, and never includes them in
 commands, exports, inventory, or audit details.
+
+The allowed public portal DNS suffix may be a delegated namespace beneath that
+zone. For example, use `iot.example.com` for portal names while scoping the API
+token to the authoritative `example.com` Cloudflare zone. Scoped API tokens do
+not require a Cloudflare Client ID or account email. A `cfat_` credential is an
+account-owned API token. Its verification URL contains a Cloudflare Account ID,
+not a Client ID; lego does not need that identifier for its DNS operations. The
+built-in ACME client registers and manages the Let’s Encrypt account using the
+email entered in Settings; no separate Home Assistant Let’s Encrypt integration
+is involved.
 
 Test with the Let’s Encrypt staging environment first. Staging certificates are
 not browser trusted. After successful staging issuance, change the environment
