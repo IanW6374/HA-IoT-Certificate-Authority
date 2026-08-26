@@ -7,6 +7,32 @@ from iot_ca.database import Inventory
 
 
 class DatabaseTests(unittest.TestCase):
+    def test_device_enrollment_token_is_one_time_and_request_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            inventory = Inventory(Path(directory) / "inventory.db")
+            inventory.add_device_enrollment(
+                enrollment_id="enrollment-1", token="secret-token",
+                portal_hostname="device.example.com",
+                api_hostname="device.local", renewal_name="renewal-device",
+                expires_at="2099-01-01T00:00:00Z",
+            )
+
+            self.assertIsNone(
+                inventory.device_enrollment("enrollment-1", "wrong-token")
+            )
+            claimed = inventory.claim_device_enrollment(
+                "enrollment-1", "secret-token", {"portal_csr": "first"}
+            )
+            self.assertEqual(claimed["status"], "pending")
+            self.assertEqual(claimed["request"]["portal_csr"], "first")
+            repeated = inventory.claim_device_enrollment(
+                "enrollment-1", "secret-token", {"portal_csr": "first"}
+            )
+            self.assertEqual(repeated["status"], "pending")
+            with self.assertRaisesRegex(ValueError, "another request"):
+                inventory.claim_device_enrollment(
+                    "enrollment-1", "secret-token", {"portal_csr": "second"}
+                )
     def test_existing_inventory_gains_certificate_source_columns(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "inventory.db"

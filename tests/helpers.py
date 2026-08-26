@@ -149,3 +149,31 @@ class FakeExternalACME:
         )
         pem = certificate.public_bytes(serialization.Encoding.PEM)
         return PublicCertificate(certificate, pem, pem, key)
+
+    def issue_csr(self, csr_pem):
+        from iot_ca.external_acme import PublicCertificate
+
+        csr = x509.load_pem_x509_csr(csr_pem)
+        names = csr.extensions.get_extension_for_class(
+            x509.SubjectAlternativeName
+        ).value.get_values_for_type(x509.DNSName)
+        issuer_key = ec.generate_private_key(ec.SECP256R1())
+        now = datetime.now(timezone.utc)
+        certificate = (
+            x509.CertificateBuilder()
+            .subject_name(csr.subject)
+            .issuer_name(x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "Test Public Issuer")
+            ]))
+            .public_key(csr.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(minutes=1))
+            .not_valid_after(now + timedelta(days=90))
+            .add_extension(
+                x509.SubjectAlternativeName([x509.DNSName(name) for name in names]),
+                critical=False,
+            )
+            .sign(issuer_key, hashes.SHA256())
+        )
+        pem = certificate.public_bytes(serialization.Encoding.PEM)
+        return PublicCertificate(certificate, pem, pem, None)

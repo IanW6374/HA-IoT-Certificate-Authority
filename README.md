@@ -22,6 +22,8 @@ publicly trusted IoT MD portal certificates without exposing private services.
 - Optional Let’s Encrypt portal issuance through scoped Cloudflare DNS tokens
 - Split IoT MD provisioning packages with a public portal identity and a
   separate private-CA Device API/fleet identity
+- Host-bound IoT MD enrollment files that let devices generate keys locally
+  and receive public portal plus private service certificates automatically
 
 The root private key is re-encrypted with an operator-supplied passphrase,
 placed into a one-time export, and removed from the online CA. Home Assistant

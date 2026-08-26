@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import os
+import re
+import secrets
 import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -25,6 +28,10 @@ from .profiles import PROFILES, validate_request
 class CertificateService:
     EXPORT_LIFETIME = timedelta(minutes=15)
     ROOT_EXPORT_LIFETIME = timedelta(days=7)
+    DEVICE_ENROLLMENT_LIFETIME = timedelta(minutes=30)
+    PORTAL_HOST = re.compile(
+        r"^(?:[a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])$"
+    )
 
     def __init__(
         self, data_root: Path | str, *, engine=None, inventory=None,
@@ -68,6 +75,230 @@ class CertificateService:
                 detail={"error": str(exc)},
             )
             raise
+
+    def create_device_enrollment(self, portal_host: str):
+        external = self.external_acme.settings()
+        if not external.get("enabled"):
+            raise ValueError("Enable public ACME issuance before creating an enrollment")
+        portal_host = str(portal_host or "").strip().lower()
+        if not self.PORTAL_HOST.fullmatch(portal_host):
+            raise ValueError(
+                "The portal host must be one DNS label containing only letters, "
+                "numbers, or internal hyphens"
+            )
+        enrollment_id = str(uuid.uuid4())
+        token = secrets.token_urlsafe(32)
+        portal_hostname = portal_host + "." + external["zone"]
+        api_hostname = portal_host + ".local"
+        renewal_name = "iotmd-renewal-" + enrollment_id
+        expires = datetime.now(timezone.utc) + self.DEVICE_ENROLLMENT_LIFETIME
+        expires_at = expires.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        self.inventory.add_device_enrollment(
+            enrollment_id=enrollment_id,
+            token=token,
+            portal_hostname=portal_hostname,
+            api_hostname=api_hostname,
+            renewal_name=renewal_name,
+            expires_at=expires_at,
+        )
+        root = x509.load_pem_x509_certificate(self.engine.root_certificate())
+        package = {
+            "protocol": "iotmd-enrollment-v1",
+            "enrollment_id": enrollment_id,
+            "endpoint": "https://" + self.settings()["ca_dns"] + ":9010",
+            "token": token,
+            "portal_hostname": portal_hostname,
+            "api_hostname": api_hostname,
+            "renewal_name": renewal_name,
+            "ca_root_der": self._b64(
+                root.public_bytes(serialization.Encoding.DER)
+            ),
+            "expires_at": expires_at,
+        }
+        export_token = self._store_export(
+            (json.dumps(package, indent=2, sort_keys=True) + "\n").encode(),
+            kind="device-enrollment",
+            filename=portal_host + ".iotenroll",
+            lifetime=self.DEVICE_ENROLLMENT_LIFETIME,
+        )
+        self.inventory.audit(
+            "device-enrollment.authorize", enrollment_id,
+            detail={
+                "portal_hostname": portal_hostname,
+                "api_hostname": api_hostname,
+                "expires_at": expires_at,
+            },
+        )
+        return enrollment_id, export_token
+
+    def claim_device_enrollment(self, enrollment_id, token, request_value):
+        enrollment = self.inventory.claim_device_enrollment(
+            str(enrollment_id), str(token), request_value
+        )
+        if not enrollment:
+            raise PermissionError("Unknown enrollment or invalid token")
+        if enrollment["status"] == "expired":
+            raise PermissionError("Enrollment authorization has expired")
+        return enrollment
+
+    def device_enrollment_status(self, enrollment_id, token):
+        enrollment = self.inventory.device_enrollment(str(enrollment_id), str(token))
+        if not enrollment:
+            raise PermissionError("Unknown enrollment or invalid token")
+        return {
+            "status": enrollment["status"],
+            "error": enrollment.get("error"),
+            "result": enrollment.get("result"),
+        }
+
+    def fulfill_device_enrollment(self, enrollment_id):
+        enrollment = self.inventory.device_enrollment_by_id(str(enrollment_id))
+        if not enrollment or enrollment["status"] != "pending":
+            return
+        try:
+            request_value = enrollment.get("request") or {}
+            portal_csr = self._enrollment_csr(
+                request_value.get("portal_csr"), enrollment["portal_hostname"],
+                require_san=True, required_usage=ExtendedKeyUsageOID.SERVER_AUTH,
+            )
+            api_csr = self._enrollment_csr(
+                request_value.get("api_csr"), enrollment["api_hostname"],
+                require_san=True, required_usage=ExtendedKeyUsageOID.SERVER_AUTH,
+            )
+            renewal_csr = self._enrollment_csr(
+                request_value.get("renewal_csr"), enrollment["renewal_name"],
+                require_san=False, required_usage=ExtendedKeyUsageOID.CLIENT_AUTH,
+            )
+            public = self.external_acme.issue_csr(
+                portal_csr.public_bytes(serialization.Encoding.PEM)
+            )
+            api_pem = self.engine.sign(
+                csr_pem=api_csr.public_bytes(serialization.Encoding.PEM),
+                common_name=enrollment["api_hostname"],
+                sans=[enrollment["api_hostname"]],
+                validity_days=365,
+            )
+            renewal_pem = self.engine.sign(
+                csr_pem=renewal_csr.public_bytes(serialization.Encoding.PEM),
+                common_name=enrollment["renewal_name"], sans=[], validity_days=365,
+            )
+            api_certificate = x509.load_pem_x509_certificate(api_pem)
+            renewal_certificate = x509.load_pem_x509_certificate(renewal_pem)
+            self._record_enrolled_certificate(
+                public.certificate, "public-portal", enrollment["portal_hostname"],
+                [enrollment["portal_hostname"]], "external-acme",
+                "letsencrypt-cloudflare-dns01", public.certificate_pem,
+            )
+            self._record_enrolled_certificate(
+                api_certificate, "tls-server", enrollment["api_hostname"],
+                [enrollment["api_hostname"]], "manual",
+                "iotmd-device-enrollment", api_pem,
+            )
+            self._record_enrolled_certificate(
+                renewal_certificate, "tls-client", enrollment["renewal_name"],
+                [], "manual", "iotmd-renewal-identity", renewal_pem,
+            )
+            root = x509.load_pem_x509_certificate(self.engine.root_certificate())
+            intermediate = x509.load_pem_x509_certificate(
+                self.engine.intermediate_certificate()
+            )
+            api_chain_pem = (
+                api_pem.rstrip() + b"\n" +
+                self.engine.intermediate_certificate().lstrip()
+            )
+            result = {
+                "protocol": "iotmd-enrollment-v1",
+                "portal_hostname": enrollment["portal_hostname"],
+                "api_hostname": enrollment["api_hostname"],
+                "portal_certificate_pem": self._b64(public.fullchain_pem),
+                "api_certificate_pem": self._b64(api_chain_pem),
+                "renewal_certificate_der": self._b64(
+                    renewal_certificate.public_bytes(serialization.Encoding.DER)
+                ),
+                "ca_root_der": self._b64(
+                    root.public_bytes(serialization.Encoding.DER)
+                ),
+                "ca_intermediate_der": self._b64(
+                    intermediate.public_bytes(serialization.Encoding.DER)
+                ),
+                "portal_not_after": self._certificate_time(
+                    public.certificate, "not_valid_after"
+                ),
+            }
+            self.inventory.complete_device_enrollment(enrollment_id, result)
+            self.inventory.audit(
+                "device-enrollment.complete", enrollment_id,
+                detail={
+                    "portal_hostname": enrollment["portal_hostname"],
+                    "api_hostname": enrollment["api_hostname"],
+                },
+            )
+        except Exception as exc:
+            self.inventory.fail_device_enrollment(enrollment_id, str(exc))
+            self.inventory.audit(
+                "device-enrollment.complete", enrollment_id, success=False,
+                detail={"error": str(exc)},
+            )
+            raise
+
+    def _enrollment_csr(self, encoded, expected_name, *, require_san, required_usage):
+        try:
+            payload = base64.b64decode(str(encoded), validate=True)
+            csr = x509.load_der_x509_csr(payload)
+        except Exception as exc:
+            raise ValueError("Enrollment contains an invalid certificate request") from exc
+        if not csr.is_signature_valid:
+            raise ValueError("Enrollment certificate request signature is invalid")
+        common_names = csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        if len(common_names) != 1 or common_names[0].value != expected_name:
+            raise ValueError("Enrollment certificate request identity does not match authorization")
+        try:
+            sans = csr.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            ).value.get_values_for_type(x509.DNSName)
+        except x509.ExtensionNotFound:
+            sans = []
+        if (require_san and sans != [expected_name]) or (not require_san and sans):
+            raise ValueError("Enrollment certificate request SAN does not match authorization")
+        try:
+            usages = csr.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+        except x509.ExtensionNotFound:
+            usages = []
+        if required_usage not in usages:
+            raise ValueError("Enrollment certificate request has the wrong key usage")
+        if not isinstance(csr.public_key(), ec.EllipticCurvePublicKey) or not isinstance(
+            csr.public_key().curve, ec.SECP256R1
+        ):
+            raise ValueError("Enrollment certificate requests must use P-256 keys")
+        return csr
+
+    def _record_enrolled_certificate(
+        self, certificate, profile, common_name, sans, source, provisioner,
+        certificate_pem,
+    ):
+        validity = max(
+            1,
+            (
+                self._certificate_datetime(certificate, "not_valid_after") -
+                self._certificate_datetime(certificate, "not_valid_before")
+            ).days,
+        )
+        self.inventory.add_certificate({
+            "id": str(uuid.uuid4()), "profile": profile,
+            "common_name": common_name, "sans_json": json.dumps(sans),
+            "key_type": "ec-p256", "validity_days": validity,
+            "serial": str(certificate.serial_number),
+            "fingerprint": certificate.fingerprint(hashes.SHA256()).hex(),
+            "not_before": self._certificate_time(certificate, "not_valid_before"),
+            "not_after": self._certificate_time(certificate, "not_valid_after"),
+            "status": "active", "certificate_pem": certificate_pem,
+            "created_at": utc_now(), "renewed_from": None, "revoked_at": None,
+            "source": source, "provisioner": provisioner,
+        })
+
+    @staticmethod
+    def _b64(value):
+        return base64.b64encode(bytes(value)).decode("ascii")
 
     def initialize(self, **values):
         try:

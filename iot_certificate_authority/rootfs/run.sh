@@ -21,10 +21,24 @@ start_step_ca() {
         | python3 -u -m iot_ca.acme_inventory --stream
 }
 
+start_provisioning_api() {
+    python3 -u -m iot_ca.provisioning_identity
+    exec gunicorn \
+        --bind 0.0.0.0:9010 \
+        --workers 1 \
+        --threads 4 \
+        --timeout 420 \
+        --certfile "${DATA_ROOT}/provisioning-api/server.crt.pem" \
+        --keyfile "${DATA_ROOT}/provisioning-api/server.key.pem" \
+        --access-logfile - \
+        --error-logfile - \
+        'iot_ca.provisioning_api:create_app()'
+}
+
 shutdown() {
     trap - TERM INT EXIT
-    kill "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" 2>/dev/null || true
-    wait "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" 2>/dev/null || true
+    kill "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}" 2>/dev/null || true
+    wait "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}" 2>/dev/null || true
 }
 
 mkdir -p "${DATA_ROOT}" /run/nginx
@@ -45,10 +59,13 @@ UI_PID=$!
 nginx -g "daemon off; error_log /dev/stdout notice;" &
 NGINX_PID=$!
 
+start_provisioning_api &
+PROVISIONING_PID=$!
+
 trap shutdown TERM INT EXIT
 
 set +e
-wait -n "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}"
+wait -n "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}"
 EXIT_STATUS=$?
 set -e
 if [[ "${EXIT_STATUS}" -eq 0 ]]; then

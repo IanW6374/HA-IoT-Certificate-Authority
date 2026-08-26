@@ -7,8 +7,8 @@ from pathlib import Path
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from iot_ca.external_acme import ExternalACME
 
@@ -112,6 +112,75 @@ class ExternalACMETests(unittest.TestCase):
             client.issue(["device.example.com"])
         self.assertFalse(
             any(path.name.startswith("issuance-") for path in client.root.iterdir())
+        )
+
+    def test_issue_csr_preserves_device_generated_public_key(self):
+        captured = {}
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        request = (
+            x509.CertificateSigningRequestBuilder()
+            .subject_name(x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "device.example.com")
+            ]))
+            .add_extension(
+                x509.SubjectAlternativeName([
+                    x509.DNSName("device.example.com")
+                ]), critical=False,
+            )
+            .add_extension(
+                x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]),
+                critical=False,
+            )
+            .sign(private_key, hashes.SHA256())
+        )
+
+        def runner(command, **_options):
+            captured["command"] = command
+            work = Path(command[command.index("--path") + 1])
+            submitted = x509.load_pem_x509_csr(
+                Path(command[command.index("--csr") + 1]).read_bytes()
+            )
+            output = work / "certificates"
+            output.mkdir(parents=True)
+            issuer_key = ec.generate_private_key(ec.SECP256R1())
+            now = datetime.now(timezone.utc)
+            certificate = (
+                x509.CertificateBuilder()
+                .subject_name(submitted.subject)
+                .issuer_name(submitted.subject)
+                .public_key(submitted.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(now - timedelta(minutes=1))
+                .not_valid_after(now + timedelta(days=90))
+                .add_extension(
+                    x509.SubjectAlternativeName([
+                        x509.DNSName("device.example.com")
+                    ]), critical=False,
+                )
+                .sign(issuer_key, hashes.SHA256())
+            )
+            (output / "request.crt").write_bytes(
+                certificate.public_bytes(serialization.Encoding.PEM)
+            )
+            return type("Completed", (), {
+                "returncode": 0, "stdout": "", "stderr": "",
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="staging", terms_accepted=True, dns_token="dns-secret",
+        )
+        result = client.issue_csr(
+            request.public_bytes(serialization.Encoding.PEM)
+        )
+
+        self.assertIn("--csr", captured["command"])
+        self.assertNotIn("--domains", captured["command"])
+        self.assertIsNone(result.private_key)
+        self.assertEqual(
+            result.certificate.public_key().public_numbers(),
+            private_key.public_key().public_numbers(),
         )
 
 

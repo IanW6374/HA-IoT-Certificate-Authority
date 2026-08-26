@@ -14,6 +14,7 @@ from pathlib import Path
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
+from cryptography.x509.oid import NameOID
 
 
 LOGGER = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class PublicCertificate:
     certificate: x509.Certificate
     certificate_pem: bytes
     fullchain_pem: bytes
-    private_key: object
+    private_key: object | None
 
 
 class ExternalACME:
@@ -108,6 +109,28 @@ class ExternalACME:
         return self.settings()
 
     def issue(self, names) -> PublicCertificate:
+        return self._issue(names, csr_pem=None)
+
+    def issue_csr(self, csr_pem: bytes) -> PublicCertificate:
+        csr = x509.load_pem_x509_csr(bytes(csr_pem))
+        if not csr.is_signature_valid:
+            raise ValueError("Public portal CSR signature is invalid")
+        try:
+            names = csr.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            ).value.get_values_for_type(x509.DNSName)
+        except x509.ExtensionNotFound:
+            names = []
+        if not names:
+            names = [
+                attribute.value for attribute in csr.subject.get_attributes_for_oid(
+                    NameOID.COMMON_NAME
+                )
+            ]
+        return self._issue(names, csr_pem=bytes(csr_pem))
+
+    def _issue(self, names, csr_pem=None) -> PublicCertificate:
+        csr = x509.load_pem_x509_csr(csr_pem) if csr_pem is not None else None
         settings = self.settings()
         if not settings["enabled"]:
             raise ValueError("Public ACME issuance is not enabled")
@@ -128,8 +151,13 @@ class ExternalACME:
                 "--dns.propagation.disable-rns",
                 "--accept-tos", "--key-type", "RSA2048",
             ]
-            for name in names:
-                command.extend(("--domains", name))
+            if csr_pem is None:
+                for name in names:
+                    command.extend(("--domains", name))
+            else:
+                csr_path = work / "request.csr"
+                csr_path.write_bytes(csr_pem)
+                command.extend(("--csr", str(csr_path)))
             try:
                 completed = self.runner(
                     command, env=environment, capture_output=True, text=True,
@@ -152,13 +180,22 @@ class ExternalACME:
                 raise RuntimeError(
                     "Public ACME request failed" + (": " + detail if detail else "")
                 )
-            certificate_path, key_path = self._issued_paths(work)
+            certificate_path = self._issued_certificate_path(work)
             fullchain_pem = certificate_path.read_bytes()
             certificate_pem = self._first_certificate_pem(fullchain_pem)
             certificate = x509.load_pem_x509_certificate(certificate_pem)
-            private_key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
-            if certificate.public_key().public_numbers() != private_key.public_key().public_numbers():
-                raise RuntimeError("Public ACME certificate and private key do not match")
+            private_key = None
+            if csr_pem is None:
+                key_path = certificate_path.with_suffix(".key")
+                if not key_path.is_file():
+                    raise RuntimeError("Public ACME client did not produce a private key")
+                private_key = serialization.load_pem_private_key(
+                    key_path.read_bytes(), password=None
+                )
+                if certificate.public_key().public_numbers() != private_key.public_key().public_numbers():
+                    raise RuntimeError("Public ACME certificate and private key do not match")
+            elif certificate.public_key().public_numbers() != csr.public_key().public_numbers():
+                raise RuntimeError("Public ACME certificate does not match the submitted CSR")
             return PublicCertificate(certificate, certificate_pem, fullchain_pem, private_key)
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -180,16 +217,14 @@ class ExternalACME:
         return result
 
     @staticmethod
-    def _issued_paths(work):
+    def _issued_certificate_path(work):
         certificates = [
             path for path in work.rglob("*.crt")
             if "certificates" in path.parts and not path.name.endswith(".issuer.crt")
         ]
-        for certificate in certificates:
-            key = certificate.with_suffix(".key")
-            if key.is_file():
-                return certificate, key
-        raise RuntimeError("Public ACME client did not produce a certificate and key")
+        if certificates:
+            return certificates[0]
+        raise RuntimeError("Public ACME client did not produce a certificate")
 
     @staticmethod
     def _first_certificate_pem(fullchain):

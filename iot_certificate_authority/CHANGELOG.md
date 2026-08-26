@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0
+
+- Add short-lived, host-bound `.iotenroll` authorizations for automated IoT MD
+  first-boot provisioning without exporting device private keys.
+- Accept separate portal, private Device API and renewal CSRs over a dedicated
+  private-CA-pinned HTTPS provisioning endpoint on TCP 9010.
+- Complete Cloudflare/Let’s Encrypt DNS-01 issuance from the portal CSR while
+  signing API and renewal identities with the private IoT CA.
+- Enforce one-time token, expiry, P-256 key, exact CN/SAN and server/client EKU
+  constraints before issuance, with success and failure audit records.
+- Return certificate and trust material only; Cloudflare credentials remain in
+  the CA and every device private key remains on the device.
+
 ## 0.3.5
 
 - Keep nginx and Gunicorn alive longer than the external ACME request ceiling

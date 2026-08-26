@@ -210,6 +210,32 @@ def create_app(*, data_root=None, service=None):
                 form=request.form,
             ), 400
 
+    @app.route("/device-enrollments/new", methods=["GET", "POST"])
+    def new_device_enrollment():
+        _require_initialized(certificate_service)
+        external = certificate_service.settings()["external_acme"]
+        if not external["enabled"]:
+            flash("Configure and enable public ACME issuance first", "error")
+            return redirect(url_for("settings"))
+        if request.method == "GET":
+            return render_template(
+                "new_device_enrollment.html", external=external
+            )
+        try:
+            enrollment_id, token = certificate_service.create_device_enrollment(
+                request.form.get("portal_host", "")
+            )
+            session["pending_export_token"] = token
+            session["pending_export_kind"] = "device-enrollment"
+            session["new_enrollment_id"] = enrollment_id
+            return redirect(url_for("export_ready"))
+        except Exception as exc:
+            flash(str(exc), "error")
+            return render_template(
+                "new_device_enrollment.html", external=external,
+                form=request.form,
+            ), 400
+
     @app.get("/certificates/<certificate_id>")
     def certificate_detail(certificate_id):
         _require_initialized(certificate_service)
@@ -278,6 +304,7 @@ def create_app(*, data_root=None, service=None):
             record=record,
             export_kind=session.get("pending_export_kind"),
             certificate_id=session.get("new_certificate_id"),
+            enrollment_id=session.get("new_enrollment_id"),
         )
 
     @app.get("/download")
@@ -286,11 +313,15 @@ def create_app(*, data_root=None, service=None):
         record = certificate_service.export_for_token(token) if token else None
         if not record:
             abort(404, "One-time export not found or expired")
+        mimetype = (
+            "application/vnd.iotmd.enrollment+json"
+            if record["kind"] == "device-enrollment" else "application/zip"
+        )
         return send_file(
             record["path"],
             as_attachment=True,
             download_name=record["filename"],
-            mimetype="application/zip",
+            mimetype=mimetype,
             conditional=False,
         )
 
@@ -309,6 +340,7 @@ def create_app(*, data_root=None, service=None):
         certificate_id = session.pop("new_certificate_id", None)
         session.pop("pending_export_token", None)
         session.pop("pending_export_kind", None)
+        session.pop("new_enrollment_id", None)
         flash("Export confirmed and removed from app storage", "success")
         if certificate_id and certificate_service.certificate(certificate_id):
             return redirect(url_for("certificate_detail", certificate_id=certificate_id))

@@ -15,6 +15,9 @@ The design reduces—but cannot eliminate—that risk:
 - manually requested identities pass profile, SAN, key, and lifetime policy;
 - leaf private keys are stored only in short-lived one-time export files;
 - export bearer tokens are stored as SHA-256 hashes;
+- IoT MD enrollment bearer tokens are short-lived, host-bound, request-bound,
+  stored only as hashes, and accepted over private-CA-authenticated HTTPS;
+- IoT MD private keys are generated on the device and never enter the CA;
 - state-changing browser requests require a session CSRF token;
 - operational events are appended to a local audit table; and
 - the app runs with Home Assistant's default protection enabled.
@@ -26,7 +29,7 @@ data directory. Hardware-backed signing is outside the first-release scope.
 
 ## Deployment requirements
 
-- Do not expose port 9000 to the public internet.
+- Do not expose ports 9000 or 9010 to the public internet.
 - Use an administrator-only Home Assistant account for CA operations.
 - Encrypt Home Assistant backups and keep offline copies.
 - Store the offline root archive and its passphrase separately.

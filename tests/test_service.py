@@ -1,11 +1,14 @@
 import tempfile
 import unittest
 import zipfile
+import base64
 from pathlib import Path
 from unittest.mock import Mock
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from iot_ca.service import CertificateService
 from tests.helpers import FakeEngine, FakeExternalACME
@@ -175,6 +178,86 @@ class ServiceTests(unittest.TestCase):
                 api_hostname="",
             )
         external_acme.issue.assert_not_called()
+
+    @staticmethod
+    def enrollment_csr(name, usage, include_san=True):
+        key = ec.generate_private_key(ec.SECP256R1())
+        builder = x509.CertificateSigningRequestBuilder().subject_name(
+            x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
+        ).add_extension(x509.ExtendedKeyUsage([usage]), critical=False)
+        if include_san:
+            builder = builder.add_extension(
+                x509.SubjectAlternativeName([x509.DNSName(name)]), critical=False
+            )
+        csr = builder.sign(key, hashes.SHA256())
+        return base64.b64encode(
+            csr.public_bytes(serialization.Encoding.DER)
+        ).decode()
+
+    def test_device_enrollment_issues_only_authorized_device_csrs(self):
+        service = CertificateService(
+            self.root, engine=self.engine, external_acme=FakeExternalACME()
+        )
+        enrollment_id, export_token = service.create_device_enrollment("device")
+        exported = service.export_for_token(export_token)
+        package = __import__("json").loads(Path(exported["path"]).read_text())
+        request = {
+            "portal_csr": self.enrollment_csr(
+                "device.example.com", ExtendedKeyUsageOID.SERVER_AUTH
+            ),
+            "api_csr": self.enrollment_csr(
+                "device.local", ExtendedKeyUsageOID.SERVER_AUTH
+            ),
+            "renewal_csr": self.enrollment_csr(
+                package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
+            ),
+        }
+
+        claimed = service.claim_device_enrollment(
+            enrollment_id, package["token"], request
+        )
+        self.assertEqual(claimed["status"], "pending")
+        service.fulfill_device_enrollment(enrollment_id)
+        status = service.device_enrollment_status(
+            enrollment_id, package["token"]
+        )
+        self.assertEqual(status["status"], "complete")
+        self.assertEqual(status["result"]["portal_hostname"], "device.example.com")
+        self.assertEqual(status["result"]["api_hostname"], "device.local")
+        self.assertEqual(
+            base64.b64decode(status["result"]["api_certificate_pem"]).count(
+                b"-----BEGIN CERTIFICATE-----"
+            ),
+            2,
+        )
+        self.assertEqual(len(service.certificates()), 3)
+
+    def test_device_enrollment_rejects_a_csr_for_another_host(self):
+        service = CertificateService(
+            self.root, engine=self.engine, external_acme=FakeExternalACME()
+        )
+        enrollment_id, export_token = service.create_device_enrollment("device")
+        package = __import__("json").loads(Path(
+            service.export_for_token(export_token)["path"]
+        ).read_text())
+        service.claim_device_enrollment(enrollment_id, package["token"], {
+            "portal_csr": self.enrollment_csr(
+                "other.example.com", ExtendedKeyUsageOID.SERVER_AUTH
+            ),
+            "api_csr": self.enrollment_csr(
+                "device.local", ExtendedKeyUsageOID.SERVER_AUTH
+            ),
+            "renewal_csr": self.enrollment_csr(
+                package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
+            ),
+        })
+
+        with self.assertRaisesRegex(ValueError, "identity does not match"):
+            service.fulfill_device_enrollment(enrollment_id)
+        self.assertEqual(
+            service.device_enrollment_status(enrollment_id, package["token"])["status"],
+            "error",
+        )
 
 
 if __name__ == "__main__":

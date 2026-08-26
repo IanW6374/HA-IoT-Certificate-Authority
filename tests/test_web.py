@@ -322,6 +322,25 @@ class WebTests(unittest.TestCase):
         )
         self.assertEqual(private_identity["common_name"], "device.local")
 
+    def test_iot_md_enrollment_route_exports_one_time_authorization(self):
+        response = self.client.post(
+            "/device-enrollments/new",
+            data={"csrf_token": self.csrf(), "portal_host": "device"},
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Device enrollment is ready", response.data)
+        self.assertIn(b"device.iotenroll", response.data)
+        download = self.client.get("/download")
+        self.assertEqual(
+            download.mimetype, "application/vnd.iotmd.enrollment+json"
+        )
+        package = __import__("json").loads(download.data)
+        self.assertEqual(package["protocol"], "iotmd-enrollment-v1")
+        self.assertEqual(package["portal_hostname"], "device.example.com")
+        self.assertEqual(package["api_hostname"], "device.local")
+        self.assertNotIn("private", str(package).lower())
+
 
 if __name__ == "__main__":
     unittest.main()

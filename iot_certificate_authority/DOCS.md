@@ -39,7 +39,9 @@ on connected services and devices after initialization.
 2. Install **IoT Certificate Authority**.
 3. Keep TCP port 9000 restricted to trusted local networks. Do not forward it
    to the internet.
-4. Start the app and open its web UI.
+4. Keep TCP port 9010 restricted to trusted local networks. IoT MD devices use
+   it only for host-bound certificate provisioning.
+5. Start the app and open its web UI.
 
 The graphical interface is accepted only from Home Assistant Supervisor
 Ingress and is restricted to Home Assistant administrators. The Smallstep CA
@@ -152,10 +154,28 @@ are issued by the private IoT CA. Unzip the package on an administrator
 workstation and select the named DER files in the IoT MD initial setup wizard.
 The Cloudflare token never goes to the IoT MD device.
 
-Public issuance happens in this app before device setup. The first-boot device
-wizard installs the resulting profile files; it does not call Cloudflare or
-hold DNS credentials. This keeps initial provisioning recoverable and prevents
-an unprovisioned field device from obtaining general DNS-edit authority.
+The manual ZIP remains available, but version 0.4 also provides automated,
+device-key-preserving provisioning. Choose **Authorize IoT MD** on the
+dashboard, enter the public portal host label and download the one-time
+`.iotenroll` file. The file contains the exact public portal and private
+`<host>.local` identities, the private CA root, endpoint and a random bearer
+authorization. It contains no private key or Cloudflare credential and expires
+after 30 minutes.
+
+In the IoT MD first-boot wizard, the administrator may explicitly choose this
+public workflow, local private-CA ACME, a manual certificate package, or the
+device-generated self-signed fallback. For the public workflow, the device
+generates independent P-256 portal, Device API and renewal keys locally and
+sends only signed CSRs over pinned HTTPS to TCP 9010. The CA requires exact
+authorized names and key usages. It performs Cloudflare DNS-01 for the portal
+CSR, signs the other CSRs privately, and returns certificates and public trust
+only. The private Device API server response includes its leaf and online
+intermediate so root-trusting clients can build the complete chain. The
+authorization cannot be reused with different requests.
+
+Neither automated nor manual provisioning calls Cloudflare from the device or
+places DNS credentials on it. This prevents an unprovisioned field device from
+obtaining general DNS-edit authority.
 
 ### Generic TLS server
 

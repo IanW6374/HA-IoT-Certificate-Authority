@@ -70,6 +70,23 @@ class Inventory:
                 );
                 CREATE INDEX IF NOT EXISTS exports_expiry ON exports(expires_at);
 
+                CREATE TABLE IF NOT EXISTS device_enrollments (
+                    id TEXT PRIMARY KEY,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    portal_hostname TEXT NOT NULL,
+                    api_hostname TEXT NOT NULL,
+                    renewal_name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    request_json TEXT,
+                    result_json TEXT,
+                    error TEXT,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS device_enrollments_expiry
+                    ON device_enrollments(expires_at);
+
                 CREATE TABLE IF NOT EXISTS audit (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     occurred_at TEXT NOT NULL,
@@ -237,6 +254,99 @@ class Inventory:
                 (utc_now(), export_id),
             )
 
+    def add_device_enrollment(
+        self, *, enrollment_id, token, portal_hostname, api_hostname,
+        renewal_name, expires_at,
+    ):
+        now = utc_now()
+        with self.connection() as db:
+            db.execute(
+                """
+                INSERT INTO device_enrollments(
+                    id, token_hash, portal_hostname, api_hostname, renewal_name,
+                    status, created_at, expires_at, updated_at
+                ) VALUES(?,?,?,?,?,'authorized',?,?,?)
+                """,
+                (
+                    enrollment_id, self.token_hash(token), portal_hostname,
+                    api_hostname, renewal_name, now, expires_at, now,
+                ),
+            )
+
+    def device_enrollment(self, enrollment_id, token):
+        with self.connection() as db:
+            row = db.execute(
+                """
+                SELECT * FROM device_enrollments
+                WHERE id = ? AND token_hash = ?
+                """,
+                (enrollment_id, self.token_hash(token)),
+            ).fetchone()
+        return self._row(row) if row else None
+
+    def device_enrollment_by_id(self, enrollment_id):
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT * FROM device_enrollments WHERE id = ?", (enrollment_id,)
+            ).fetchone()
+        return self._row(row) if row else None
+
+    def claim_device_enrollment(self, enrollment_id, token, request_value):
+        encoded = json.dumps(request_value, sort_keys=True, separators=(",", ":"))
+        now = utc_now()
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT * FROM device_enrollments WHERE id = ? AND token_hash = ?",
+                (enrollment_id, self.token_hash(token)),
+            ).fetchone()
+            if not row:
+                return None
+            current = dict(row)
+            if current["expires_at"] < now:
+                db.execute(
+                    "UPDATE device_enrollments SET status='expired', updated_at=? WHERE id=?",
+                    (now, enrollment_id),
+                )
+                current["status"] = "expired"
+                return self._row(current)
+            if current["status"] == "authorized":
+                db.execute(
+                    """
+                    UPDATE device_enrollments
+                    SET status='pending', request_json=?, error=NULL, updated_at=?
+                    WHERE id=?
+                    """,
+                    (encoded, now, enrollment_id),
+                )
+                current["status"] = "pending"
+                current["request_json"] = encoded
+            elif current.get("request_json") != encoded:
+                raise ValueError("Enrollment has already been claimed with another request")
+        return self._row(current)
+
+    def complete_device_enrollment(self, enrollment_id, result):
+        with self.connection() as db:
+            db.execute(
+                """
+                UPDATE device_enrollments
+                SET status='complete', result_json=?, error=NULL, updated_at=?
+                WHERE id=? AND status='pending'
+                """,
+                (json.dumps(result, sort_keys=True), utc_now(), enrollment_id),
+            )
+
+    def fail_device_enrollment(self, enrollment_id, error):
+        with self.connection() as db:
+            db.execute(
+                """
+                UPDATE device_enrollments
+                SET status='error', error=?, updated_at=?
+                WHERE id=? AND status='pending'
+                """,
+                (str(error)[:800], utc_now(), enrollment_id),
+            )
+
     def expired_exports(self, now: str | None = None):
         with self.connection() as db:
             rows = db.execute(
@@ -252,4 +362,10 @@ class Inventory:
             result["sans"] = json.loads(result.pop("sans_json"))
         if "detail_json" in result:
             result["detail"] = json.loads(result.pop("detail_json"))
+        if "request_json" in result:
+            raw = result.pop("request_json")
+            result["request"] = json.loads(raw) if raw else None
+        if "result_json" in result:
+            raw = result.pop("result_json")
+            result["result"] = json.loads(raw) if raw else None
         return result

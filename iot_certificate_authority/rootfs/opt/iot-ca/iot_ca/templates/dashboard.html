@@ -2,7 +2,7 @@
 {% block content %}
 <section class="hero split">
   <div><p class="eyebrow">{{ settings.ca_name }}</p><h1>Certificate operations at a glance</h1><p>Issuing service: <code>{{ settings.public_ca_url }}</code></p></div>
-  <div class="actions"><a class="button primary" href="{{ url_for('new_certificate') }}">Issue private certificate</a>{% if settings.external_acme.enabled %}<a class="button secondary" href="{{ url_for('new_public_certificate') }}">Issue public portal certificate</a>{% endif %}</div>
+  <div class="actions"><a class="button primary" href="{{ url_for('new_certificate') }}">Issue private certificate</a>{% if settings.external_acme.enabled %}<a class="button secondary" href="{{ url_for('new_device_enrollment') }}">Authorize IoT MD</a><a class="button secondary" href="{{ url_for('new_public_certificate') }}">Issue public portal certificate</a>{% endif %}</div>
 </section>
 {% if dashboard.root_export_pending %}
 <section class="critical panel"><div><strong>Offline root export is awaiting confirmation</strong><p>Confirm that the downloaded archive and its passphrase are stored in separate offline locations.</p></div><form method="post" action="{{ url_for('recover_root_link') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Review root export</button></form></section>
