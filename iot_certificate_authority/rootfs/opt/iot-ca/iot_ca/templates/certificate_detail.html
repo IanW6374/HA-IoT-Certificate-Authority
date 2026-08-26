@@ -14,7 +14,7 @@
     <a class="button secondary" href="{{ url_for('download_certificate', certificate_id=certificate.id, format='der') }}">Download DER</a>
   </div>
 </section>
-{% if certificate.status == 'active' %}
+{% if certificate.status == 'active' and certificate.source != 'external-acme' %}
 <section class="grid two">
   {% if certificate.source != 'acme' %}
   <form class="panel form-grid" method="post" action="{{ url_for('renew_certificate', certificate_id=certificate.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Reissue with a new key</h2><p>Creates a replacement certificate and passively revokes this serial.</p><label>Export format<select name="export_format">{% for format in profiles[certificate.profile].export_formats %}<option value="{{ format }}">{% if format == 'iot_md' %}IoT MD{% else %}{{ format|upper }}{% endif %}</option>{% endfor %}</select></label><label>PKCS#12 password, if selected<input name="export_password" type="password" minlength="12" autocomplete="new-password"></label><button type="submit">Reissue certificate</button></form>
@@ -23,5 +23,8 @@
   {% endif %}
   <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this certificate? It will remain cryptographically valid until expiry, but step-ca will reject renewal."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke</h2><p>Blocks future renewal. Existing clients must enforce replacement because this CA uses passive revocation.</p><button class="danger" type="submit">Revoke certificate</button></form>
 </section>
+{% endif %}
+{% if certificate.status == 'active' and certificate.source == 'external-acme' %}
+<section class="panel"><h2>Public portal lifecycle</h2><p>The private key was removed after the one-time export. Issue a replacement through Public portal certificates before expiry; revocation from this app is unavailable once that key has been removed.</p><a class="button" href="{{ url_for('new_public_certificate') }}">Issue replacement</a></section>
 {% endif %}
 {% endblock %}

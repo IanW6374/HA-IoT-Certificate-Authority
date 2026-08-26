@@ -18,6 +18,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from .database import Inventory, utc_now
 from .engine import StepCAEngine
+from .external_acme import ExternalACME
 from .profiles import PROFILES, validate_request
 
 
@@ -25,20 +26,48 @@ class CertificateService:
     EXPORT_LIFETIME = timedelta(minutes=15)
     ROOT_EXPORT_LIFETIME = timedelta(days=7)
 
-    def __init__(self, data_root: Path | str, *, engine=None, inventory=None):
+    def __init__(
+        self, data_root: Path | str, *, engine=None, inventory=None,
+        external_acme=None,
+    ):
         self.data_root = Path(data_root)
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.exports_path = self.data_root / "exports"
         self.exports_path.mkdir(mode=0o700, exist_ok=True)
         self.engine = engine or StepCAEngine(self.data_root)
         self.inventory = inventory or Inventory(self.data_root / "inventory.db")
+        self.external_acme = external_acme or ExternalACME(self.data_root)
 
     @property
     def initialized(self):
         return self.engine.initialized
 
     def settings(self):
-        return self.engine.settings()
+        values = self.engine.settings()
+        values["external_acme"] = self.external_acme.settings()
+        return values
+
+    def configure_external_acme(self, **values):
+        try:
+            settings = self.external_acme.configure(**values)
+            self.inventory.audit(
+                "external-acme.configure",
+                detail={
+                    "enabled": settings["enabled"],
+                    "provider": settings["provider"],
+                    "zone": settings["zone"],
+                    "environment": settings["environment"],
+                    "dns_token_configured": settings["dns_token_configured"],
+                    "zone_token_configured": settings["zone_token_configured"],
+                },
+            )
+            return settings
+        except Exception as exc:
+            self.inventory.audit(
+                "external-acme.configure", success=False,
+                detail={"error": str(exc)},
+            )
+            raise
 
     def initialize(self, **values):
         try:
@@ -75,6 +104,8 @@ class CertificateService:
         export_password: str = "",
         renewed_from: str | None = None,
     ):
+        if profile_slug == "public-portal":
+            raise ValueError("Use the public portal issuance workflow for external ACME")
         if not self.initialized:
             raise ValueError("Initialize the certificate authority before issuing certificates")
         settings = self.settings()
@@ -164,6 +195,105 @@ class CertificateService:
             )
             raise
 
+    def issue_public_portal(self, *, common_name: str, api_hostname: str, sans=""):
+        values = [common_name]
+        values.extend(
+            item.strip() for item in str(sans or "").replace("\r", "\n").replace(",", "\n").split("\n")
+            if item.strip()
+        )
+        certificate_id = str(uuid.uuid4())
+        api_certificate_id = str(uuid.uuid4())
+        try:
+            result = self.external_acme.issue(values)
+            certificate = result.certificate
+            names = self._certificate_dns_names(certificate) or values
+            common_name = names[0]
+            api_hostname = str(api_hostname or "").strip().lower().rstrip(".")
+            if not api_hostname.endswith(".local") or "." in api_hostname[:-6]:
+                raise ValueError(
+                    "The private Device API hostname must be a single-label .local name"
+                )
+            api_private_key = self._private_key("rsa-2048")
+            api_csr = self._csr(
+                api_private_key, common_name=api_hostname, sans=[api_hostname],
+                server_auth=True, client_auth=False,
+            )
+            api_certificate_pem = self.engine.sign(
+                csr_pem=api_csr.public_bytes(serialization.Encoding.PEM),
+                common_name=api_hostname, sans=[api_hostname], validity_days=365,
+            )
+            api_certificate = x509.load_pem_x509_certificate(api_certificate_pem)
+            validity = max(
+                1,
+                (self._certificate_datetime(certificate, "not_valid_after") -
+                 self._certificate_datetime(certificate, "not_valid_before")).days,
+            )
+            record = {
+                "id": certificate_id,
+                "profile": "public-portal",
+                "common_name": common_name,
+                "sans_json": json.dumps(names),
+                "key_type": "rsa-2048",
+                "validity_days": validity,
+                "serial": str(certificate.serial_number),
+                "fingerprint": certificate.fingerprint(hashes.SHA256()).hex(),
+                "not_before": self._certificate_time(certificate, "not_valid_before"),
+                "not_after": self._certificate_time(certificate, "not_valid_after"),
+                "status": "active",
+                "certificate_pem": result.certificate_pem,
+                "created_at": utc_now(),
+                "renewed_from": None,
+                "revoked_at": None,
+                "source": "external-acme",
+                "provisioner": "letsencrypt-cloudflare-dns01",
+            }
+            archive = self._public_portal_export(
+                result, names, api_hostname, api_certificate,
+                api_certificate_pem, api_private_key,
+            )
+            self.inventory.add_certificate(record)
+            self.inventory.add_certificate({
+                "id": api_certificate_id,
+                "profile": "tls-server",
+                "common_name": api_hostname,
+                "sans_json": json.dumps([api_hostname]),
+                "key_type": "rsa-2048",
+                "validity_days": 365,
+                "serial": str(api_certificate.serial_number),
+                "fingerprint": api_certificate.fingerprint(hashes.SHA256()).hex(),
+                "not_before": self._certificate_time(api_certificate, "not_valid_before"),
+                "not_after": self._certificate_time(api_certificate, "not_valid_after"),
+                "status": "active",
+                "certificate_pem": api_certificate_pem,
+                "created_at": utc_now(),
+                "renewed_from": None,
+                "revoked_at": None,
+                "source": "manual",
+                "provisioner": "iot-md-public-profile",
+            })
+            token = self._store_export(
+                archive, kind="certificate",
+                filename=f"{self._safe_filename(common_name)}-public-portal.zip",
+            )
+            self.inventory.audit(
+                "external-acme.issue", certificate_id,
+                detail={
+                    "common_name": common_name,
+                    "sans": names,
+                    "api_hostname": api_hostname,
+                    "api_certificate_id": api_certificate_id,
+                    "environment": self.external_acme.settings()["environment"],
+                    "provider": "cloudflare",
+                },
+            )
+            return certificate_id, token
+        except Exception as exc:
+            self.inventory.audit(
+                "external-acme.issue", certificate_id, success=False,
+                detail={"common_name": str(common_name), "error": str(exc)},
+            )
+            raise
+
     def renew(self, certificate_id: str, *, export_format: str, export_password: str = ""):
         original = self.inventory.certificate(certificate_id)
         if not original:
@@ -214,6 +344,11 @@ class CertificateService:
             raise ValueError("Certificate not found")
         if certificate["status"] != "active":
             raise ValueError("Only active certificates can be revoked")
+        if certificate.get("source") == "external-acme":
+            raise ValueError(
+                "Public portal certificates must be replaced through external ACME; "
+                "their private keys are not retained for revocation"
+            )
         try:
             self.engine.revoke(certificate["serial"])
             self.inventory.set_certificate_status(certificate_id, "revoked", revoked_at=utc_now())
@@ -369,6 +504,74 @@ class CertificateService:
             else:
                 raise ValueError("Unsupported export format")
         return output.getvalue(), "zip"
+
+    def _public_portal_export(
+        self, result, names, api_hostname, api_certificate,
+        api_certificate_pem, api_private_key,
+    ):
+        certificate = result.certificate
+        metadata = json.dumps(
+            {
+                "common_name": names[0],
+                "sans": names,
+                "profile": "public-portal",
+                "serial": str(certificate.serial_number),
+                "fingerprint_sha256": certificate.fingerprint(hashes.SHA256()).hex(),
+                "issuer": "Let's Encrypt via Cloudflare DNS-01",
+                "private_key_retained_by_ca": False,
+                "installation": "Install web.crt.pem and web.key.der as the public portal identity, and api-server.* as the private API identity.",
+                "private_api_hostname": api_hostname,
+            },
+            indent=2,
+            sort_keys=True,
+        ).encode() + b"\n"
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("certificate-info.json", metadata)
+            archive.writestr("web.crt.pem", result.fullchain_pem)
+            archive.writestr(
+                "web.key.der", self._private_key_bytes(result.private_key, "der")
+            )
+            archive.writestr(
+                "api-server.crt.der",
+                api_certificate.public_bytes(serialization.Encoding.DER),
+            )
+            archive.writestr(
+                "api-server.key.der", self._private_key_bytes(api_private_key, "der")
+            )
+            archive.writestr("api-server.crt.pem", api_certificate_pem)
+            root = x509.load_pem_x509_certificate(self.engine.root_certificate())
+            intermediate = x509.load_pem_x509_certificate(
+                self.engine.intermediate_certificate()
+            )
+            archive.writestr(
+                "mqtt-ca.der", root.public_bytes(serialization.Encoding.DER)
+            )
+            archive.writestr(
+                "update-ca.der", root.public_bytes(serialization.Encoding.DER)
+            )
+            archive.writestr(
+                "intermediate-ca.der",
+                intermediate.public_bytes(serialization.Encoding.DER),
+            )
+        return output.getvalue()
+
+    @staticmethod
+    def _certificate_dns_names(certificate):
+        try:
+            extension = certificate.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            )
+        except x509.ExtensionNotFound:
+            return []
+        return extension.value.get_values_for_type(x509.DNSName)
+
+    @staticmethod
+    def _certificate_datetime(certificate, attribute):
+        value = getattr(certificate, attribute + "_utc", None) or getattr(
+            certificate, attribute
+        )
+        return value.replace(tzinfo=value.tzinfo or timezone.utc)
 
     @staticmethod
     def _private_key(key_type):

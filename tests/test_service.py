@@ -7,7 +7,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 
 from iot_ca.service import CertificateService
-from tests.helpers import FakeEngine
+from tests.helpers import FakeEngine, FakeExternalACME
 
 
 class ServiceTests(unittest.TestCase):
@@ -117,6 +117,48 @@ class ServiceTests(unittest.TestCase):
     def test_public_certificate_exports_reject_unknown_encoding(self):
         with self.assertRaisesRegex(ValueError, "PEM or DER"):
             self.service.root_trust("pkcs12")
+
+    def test_public_portal_profile_exports_split_public_and_private_identities(self):
+        service = CertificateService(
+            self.root, engine=self.engine, external_acme=FakeExternalACME()
+        )
+        certificate_id, token = service.issue_public_portal(
+            common_name="device.example.com",
+            sans="alias.example.com",
+            api_hostname="device.local",
+        )
+
+        public = service.certificate(certificate_id)
+        self.assertEqual(public["profile"], "public-portal")
+        self.assertEqual(public["source"], "external-acme")
+        api = next(
+            item for item in service.certificates()
+            if item["provisioner"] == "iot-md-public-profile"
+        )
+        self.assertEqual(api["common_name"], "device.local")
+        export = service.export_for_token(token)
+        with zipfile.ZipFile(export["path"]) as archive:
+            self.assertEqual(
+                set(archive.namelist()),
+                {
+                    "certificate-info.json", "web.crt.pem", "web.key.der",
+                    "api-server.crt.der",
+                    "api-server.key.der", "api-server.crt.pem", "mqtt-ca.der",
+                    "update-ca.der", "intermediate-ca.der",
+                },
+            )
+            public_key = serialization.load_der_private_key(
+                archive.read("web.key.der"), password=None
+            )
+            api_key = serialization.load_der_private_key(
+                archive.read("api-server.key.der"), password=None
+            )
+            self.assertEqual(public_key.key_size, 2048)
+            self.assertEqual(api_key.key_size, 2048)
+            self.assertNotEqual(
+                public_key.public_key().public_numbers(),
+                api_key.public_key().public_numbers(),
+            )
 
 
 if __name__ == "__main__":

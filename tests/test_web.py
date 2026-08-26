@@ -7,14 +7,16 @@ from cryptography import x509
 
 from iot_ca.service import CertificateService
 from iot_ca.web import create_app
-from tests.helpers import FakeEngine
+from tests.helpers import FakeEngine, FakeExternalACME
 
 
 class WebTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.service = CertificateService(root, engine=FakeEngine())
+        self.service = CertificateService(
+            root, engine=FakeEngine(), external_acme=FakeExternalACME()
+        )
         self.app = create_app(data_root=root, service=self.service)
         self.app.testing = True
         self.client = self.app.test_client()
@@ -205,6 +207,41 @@ class WebTests(unittest.TestCase):
             self.assertIn(b'data-copy-target="#acme-directory"', response.data)
             self.assertIn(b'aria-label="Copy ACME directory URL"', response.data)
             self.assertIn(b'class="copy-icon"', response.data)
+
+    def test_public_acme_settings_never_render_tokens(self):
+        response = self.client.get("/settings")
+        self.assertIn(b"Public portal certificates", response.data)
+        self.assertIn(b"Cloudflare DNS API token", response.data)
+        self.assertNotIn(b"dns-secret", response.data)
+
+        saved = self.client.post(
+            "/settings/external-acme",
+            data={
+                "csrf_token": self.csrf(), "enabled": "on",
+                "email": "admin@example.com", "zone": "example.com",
+                "environment": "production", "terms_accepted": "on",
+                "dns_token": "new-dns-secret",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertIn(b"Public ACME settings saved", saved.data)
+        self.assertNotIn(b"new-dns-secret", saved.data)
+
+    def test_public_portal_route_prepares_complete_profile_export(self):
+        response = self.client.post(
+            "/public-certificates/new",
+            data={
+                "csrf_token": self.csrf(),
+                "common_name": "device.example.com",
+                "api_hostname": "device.local",
+                "sans": "alias.example.com",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Certificate package is ready", response.data)
+        self.assertIn(b"device.example.com-public-portal.zip", response.data)
 
 
 if __name__ == "__main__":

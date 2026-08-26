@@ -27,6 +27,19 @@ class CertificateProfile:
 
 
 PROFILES = {
+    "public-portal": CertificateProfile(
+        slug="public-portal",
+        name="IoT MD public portal",
+        description="Publicly trusted portal identity issued by external ACME with Cloudflare DNS-01.",
+        default_days=90,
+        maximum_days=90,
+        key_types=("rsa-2048",),
+        default_key_type="rsa-2048",
+        require_san=True,
+        server_auth=True,
+        client_auth=False,
+        export_formats=("iot_md",),
+    ),
     "iot_md": CertificateProfile(
         slug="iot_md",
         name="IoT MD device portal",

@@ -172,6 +172,32 @@ def create_app(*, data_root=None, service=None):
                 form=request.form,
             ), 400
 
+    @app.route("/public-certificates/new", methods=["GET", "POST"])
+    def new_public_certificate():
+        _require_initialized(certificate_service)
+        external = certificate_service.settings()["external_acme"]
+        if not external["enabled"]:
+            flash("Configure and enable public ACME issuance first", "error")
+            return redirect(url_for("settings"))
+        if request.method == "GET":
+            return render_template("new_public_certificate.html", external=external)
+        try:
+            certificate_id, token = certificate_service.issue_public_portal(
+                common_name=request.form.get("common_name", ""),
+                api_hostname=request.form.get("api_hostname", ""),
+                sans=request.form.get("sans", ""),
+            )
+            session["pending_export_token"] = token
+            session["pending_export_kind"] = "certificate"
+            session["new_certificate_id"] = certificate_id
+            return redirect(url_for("export_ready"))
+        except Exception as exc:
+            flash(str(exc), "error")
+            return render_template(
+                "new_public_certificate.html", external=external,
+                form=request.form,
+            ), 400
+
     @app.get("/certificates/<certificate_id>")
     def certificate_detail(certificate_id):
         _require_initialized(certificate_service)
@@ -338,6 +364,24 @@ def create_app(*, data_root=None, service=None):
             settings=certificate_service.settings(),
             ca_health=certificate_service.engine.health(),
         )
+
+    @app.post("/settings/external-acme")
+    def external_acme_settings():
+        _require_initialized(certificate_service)
+        try:
+            certificate_service.configure_external_acme(
+                enabled=request.form.get("enabled") == "on",
+                email=request.form.get("email", ""),
+                zone=request.form.get("zone", ""),
+                environment=request.form.get("environment", "staging"),
+                terms_accepted=request.form.get("terms_accepted") == "on",
+                dns_token=request.form.get("dns_token", ""),
+                zone_token=request.form.get("zone_token", ""),
+            )
+            flash("Public ACME settings saved", "success")
+        except Exception as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("settings"))
 
     @app.errorhandler(400)
     @app.errorhandler(403)

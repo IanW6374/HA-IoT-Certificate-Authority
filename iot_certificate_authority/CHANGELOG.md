@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+- Add optional Let’s Encrypt issuance through Cloudflare DNS-01 with scoped,
+  file-referenced API tokens.
+- Add an IoT MD public-portal profile that exports separate public portal and
+  private Device API/fleet identities for initial provisioning.
+- Keep public ACME secrets out of commands, exports, inventory, and audit data.
+- Pin and checksum lego 5.0.4 for amd64, aarch64, and armv7 images.
+
 ## 0.3.1
 
 - Render the IoT MD provisioning export with the correct display name.

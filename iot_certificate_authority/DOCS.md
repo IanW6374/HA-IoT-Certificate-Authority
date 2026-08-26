@@ -8,9 +8,10 @@ renewal authorization, and passive revocation. The app adds a graphical
 administrator workflow, certificate inventory, local issuance profiles,
 one-time secret exports, expiry visibility, and an audit log.
 
-It is not a public certificate authority and does not make certificates
-trusted by browsers automatically. Clients must explicitly install the root
-certificate.
+The built-in authority is private, so clients must explicitly install its root
+certificate. Version 0.4 adds an optional external ACME path for browser-trusted
+IoT MD portal certificates. That path uses Let’s Encrypt and Cloudflare DNS-01;
+it does not turn the private CA into a public authority.
 
 ## CA certificate downloads
 
@@ -105,6 +106,47 @@ Install the files through the IoT MD first-boot certificate page. The DNS SAN
 should match the name operators use to open the IoT MD portal. Prefer a stable
 local DNS name over a DHCP address.
 
+### IoT MD public portal
+
+Enable **Settings → Public portal certificates** only after creating a
+Cloudflare API token scoped to the required zone. A single token may have
+`Zone / Zone / Read` and `Zone / DNS / Edit`, or those permissions may be split
+between separate Zone and DNS tokens. The app stores tokens in mode-0600 files,
+passes them to the ACME client by file reference, and never includes them in
+commands, exports, inventory, or audit details.
+
+Test with the Let’s Encrypt staging environment first. Staging certificates are
+not browser trusted. After successful staging issuance, change the environment
+to production and issue the final package. Public certificate names are normally
+recorded in Certificate Transparency logs; do not use sensitive hostnames.
+
+The IoT MD public-portal profile asks for the public portal name inside the
+configured Cloudflare zone and the private single-label `.local` name used by
+Device API/fleet clients. Its one-time ZIP contains:
+
+```text
+web.crt.pem
+web.key.der
+api-server.crt.der
+api-server.key.der
+api-server.crt.pem
+mqtt-ca.der
+update-ca.der
+intermediate-ca.der
+certificate-info.json
+```
+
+`web.crt.pem` contains the public leaf and intermediate chain required by
+browsers. The `web.*` pair is publicly issued. The `api-server.*` pair and trust anchors
+are issued by the private IoT CA. Unzip the package on an administrator
+workstation and select the named DER files in the IoT MD initial setup wizard.
+The Cloudflare token never goes to the IoT MD device.
+
+Public issuance happens in this app before device setup. The first-boot device
+wizard installs the resulting profile files; it does not call Cloudflare or
+hold DNS credentials. This keeps initial provisioning recoverable and prevents
+an unprovisioned field device from obtaining general DNS-edit authority.
+
 ### Generic TLS server
 
 Creates an EC P-256 or RSA server identity. At least one DNS or IP SAN is
@@ -182,6 +224,10 @@ ACME client's private key never leaves the client.
 Certificates issued before version 0.1.4 are added when the ACME client next
 renews them. They cannot be reconstructed from historical app logs that are no
 longer present in the add-on container.
+
+The private Smallstep ACME directory above is independent from external public
+ACME. Private ACME remains suitable for local identities. External public ACME
+uses DNS-01 only and is limited to the Cloudflare zone configured in Settings.
 
 ## Backups and recovery
 

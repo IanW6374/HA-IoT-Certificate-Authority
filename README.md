@@ -1,9 +1,9 @@
 # Home Assistant IoT Certificate Authority
 
-A graphical private certificate authority for Home Assistant OS and
-Supervised installations. The app uses Smallstep `step-ca` for signing and
-certificate lifecycle operations, with an administrator-only Home Assistant
-Ingress interface designed for IoT fleets such as IoT MD.
+A graphical certificate service for Home Assistant OS and Supervised
+installations. Smallstep `step-ca` provides the private CA. An optional,
+strictly separated external ACME workflow uses Cloudflare DNS-01 to obtain
+publicly trusted IoT MD portal certificates without exposing private services.
 
 ## First-release capabilities
 
@@ -19,6 +19,9 @@ Ingress interface designed for IoT fleets such as IoT MD.
 - One-time private-key downloads with automatic expiry
 - Append-only operator audit history
 - ACME endpoint provided by `step-ca`
+- Optional Let’s Encrypt portal issuance through scoped Cloudflare DNS tokens
+- Split IoT MD provisioning packages with a public portal identity and a
+  separate private-CA Device API/fleet identity
 
 The root private key is re-encrypted with an operator-supplied passphrase,
 placed into a one-time export, and removed from the online CA. Home Assistant

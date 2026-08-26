@@ -6,6 +6,21 @@
 <article class="panel detail-list"><h2>Identity policy</h2><dl><dt>CA DNS name</dt><dd>{{ settings.ca_dns }}</dd><dt>Allowed DNS suffix</dt><dd>{{ settings.allowed_dns_suffix }}</dd><dt>Public SANs</dt><dd>{{ 'Allowed' if settings.allow_public_sans else 'Denied' }}</dd><dt>Initialized</dt><dd>{{ settings.initialized_at }}</dd></dl></article>
 <article class="panel detail-list"><h2>Services</h2><dl><dt>Engine status</dt><dd><span class="status {{ 'good' if ca_health.online else 'bad' }}">{{ 'Online' if ca_health.online else 'Offline' }}</span></dd><dt>CA URL</dt><dd class="mono wrap">{{ settings.public_ca_url }}</dd><dt>ACME directory</dt><dd><div class="copy-field"><code id="acme-directory" class="wrap">{{ settings.acme_directory }}</code><button type="button" class="icon-button" data-copy-target="#acme-directory" aria-label="Copy ACME directory URL" title="Copy ACME directory URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></dd></dl></article>
 </section>
+{% set external = settings.external_acme %}
+<section class="panel">
+  <div class="section-head"><div><p class="eyebrow">External issuer</p><h2>Public portal certificates</h2></div>{% if external.enabled %}<a class="button" href="{{ url_for('new_public_certificate') }}">Issue public portal certificate</a>{% endif %}</div>
+  <p>Use Let’s Encrypt with Cloudflare DNS-01 for browser-trusted IoT MD portal identities. This does not change the private CA used by MQTT, Device API/fleet, Syslog or release services.</p>
+  <form class="form-grid" method="post" action="{{ url_for('external_acme_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="check"><input type="checkbox" name="enabled" {{ 'checked' if external.enabled else '' }}>Enable public ACME issuance</label>
+    <div class="grid two compact"><label>ACME account email<input type="email" name="email" maxlength="254" value="{{ external.email }}" autocomplete="email"></label><label>Cloudflare DNS zone<input name="zone" maxlength="253" value="{{ external.zone }}" placeholder="waltonfamily.cloud"></label></div>
+    <label>Let’s Encrypt environment<select name="environment"><option value="staging" {{ 'selected' if external.environment == 'staging' else '' }}>Staging (test first)</option><option value="production" {{ 'selected' if external.environment == 'production' else '' }}>Production</option></select><span class="help">Staging certificates are not browser trusted and avoid production rate limits while testing.</span></label>
+    <div class="grid two compact"><label>Cloudflare DNS API token<input type="password" name="dns_token" autocomplete="new-password" placeholder="{{ 'Configured — leave blank to retain' if external.dns_token_configured else 'Required' }}"><span class="help">Scope to this zone with Zone / DNS / Edit.</span></label><label>Separate Zone API token (optional)<input type="password" name="zone_token" autocomplete="new-password" placeholder="{{ 'Configured — leave blank to retain' if external.zone_token_configured else 'Optional' }}"><span class="help">Use Zone / Zone / Read. A single token with both permissions may be used instead.</span></label></div>
+    <label class="check"><input type="checkbox" name="terms_accepted" {{ 'checked' if external.terms_accepted else '' }}>I accept the selected ACME provider’s subscriber agreement</label>
+    <div class="warning"><strong>Public DNS and Certificate Transparency</strong><p>Requested public hostnames can become publicly discoverable. The Cloudflare token is stored mode 0600, passed by file reference, and never included in certificate exports or audit details.</p></div>
+    <button type="submit">Save public ACME settings</button>
+  </form>
+</section>
 <section class="panel">
   <h2>Public CA certificates</h2>
   <p>The root is the trust anchor to install on clients. The intermediate is the online issuing CA. Use the CA chain PEM when an application expects both certificates in one file. None of these downloads contains private key material.</p>

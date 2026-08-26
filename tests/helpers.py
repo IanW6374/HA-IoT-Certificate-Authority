@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import NameOID
 
 
@@ -98,3 +98,54 @@ class FakeEngine:
 
     def intermediate_certificate(self):
         return self.intermediate.public_bytes(serialization.Encoding.PEM)
+
+
+class FakeExternalACME:
+    def __init__(self):
+        self.config = {
+            "enabled": True,
+            "provider": "cloudflare",
+            "email": "operator@example.com",
+            "zone": "example.com",
+            "environment": "staging",
+            "directory_url": "https://acme-staging-v02.api.letsencrypt.org/directory",
+            "terms_accepted": True,
+            "dns_token_configured": True,
+            "zone_token_configured": False,
+        }
+
+    def settings(self):
+        return dict(self.config)
+
+    def configure(self, **values):
+        self.config.update(values)
+        self.config["provider"] = "cloudflare"
+        self.config["directory_url"] = "https://acme-v02.api.letsencrypt.org/directory"
+        self.config["dns_token_configured"] = True
+        self.config["zone_token_configured"] = bool(values.get("zone_token"))
+        self.config.pop("dns_token", None)
+        self.config.pop("zone_token", None)
+        return self.settings()
+
+    def issue(self, names):
+        from iot_ca.external_acme import PublicCertificate
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        now = datetime.now(timezone.utc)
+        subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, names[0])])
+        certificate = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(subject)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(minutes=1))
+            .not_valid_after(now + timedelta(days=90))
+            .add_extension(
+                x509.SubjectAlternativeName([x509.DNSName(name) for name in names]),
+                critical=False,
+            )
+            .sign(key, hashes.SHA256())
+        )
+        pem = certificate.public_bytes(serialization.Encoding.PEM)
+        return PublicCertificate(certificate, pem, pem, key)

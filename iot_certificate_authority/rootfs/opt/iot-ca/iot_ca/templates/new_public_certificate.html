@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Issue public portal certificate · IoT Certificate Authority{% endblock %}
+{% block content %}
+<section class="hero narrow"><p class="eyebrow">External ACME · Cloudflare DNS-01</p><h1>Issue a public portal certificate</h1><p>Let’s Encrypt validates DNS through Cloudflare. The portal private key is deleted from the CA after the one-time export is consumed or expires.</p></section>
+<form class="panel form-grid narrow" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Primary portal DNS name<input name="common_name" required maxlength="253" value="{{ form.common_name if form else '' }}" placeholder="device.{{ external.zone }}"><span class="help">Must be within {{ external.zone }}.</span></label>
+  <label>Private Device API/fleet hostname<input name="api_hostname" required maxlength="253" value="{{ form.api_hostname if form else '' }}" placeholder="device.local" pattern="[A-Za-z0-9-]+\.local"><span class="help">The profile also issues an independent private-CA server identity for this mDNS name.</span></label>
+  <label>Additional portal DNS names<textarea name="sans" rows="3" placeholder="device-alias.{{ external.zone }}">{{ form.sans if form else '' }}</textarea><span class="help">Optional; one per line or comma-separated. All names are published in the certificate.</span></label>
+  <div class="warning"><strong>Split identities</strong><p>The package contains a public <code>web.crt.pem</code> leaf/intermediate chain and <code>web.key.der</code>, plus separate private-CA <code>api-server.*</code> files and private trust anchors. The initial IoT MD wizard installs each file only for its stated purpose.</p></div>
+  <button type="submit">Validate DNS and prepare export</button>
+</form>
+{% endblock %}

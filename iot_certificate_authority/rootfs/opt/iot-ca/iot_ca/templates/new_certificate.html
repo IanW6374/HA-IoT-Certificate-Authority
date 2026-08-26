@@ -5,7 +5,7 @@
 <form class="panel form-grid narrow" method="post" id="certificate-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>Certificate profile<select name="profile" id="profile">
-  {% for slug, profile in profiles.items() %}<option value="{{ slug }}" data-description="{{ profile.description }}" data-default-days="{{ profile.default_days }}" data-key-types="{{ profile.key_types|join(',') }}" data-default-key="{{ profile.default_key_type }}" data-exports="{{ profile.export_formats|join(',') }}" {{ 'selected' if slug == selected_profile else '' }}>{{ profile.name }}</option>{% endfor %}
+  {% for slug, profile in profiles.items() if slug != 'public-portal' %}<option value="{{ slug }}" data-description="{{ profile.description }}" data-default-days="{{ profile.default_days }}" data-key-types="{{ profile.key_types|join(',') }}" data-default-key="{{ profile.default_key_type }}" data-exports="{{ profile.export_formats|join(',') }}" {{ 'selected' if slug == selected_profile else '' }}>{{ profile.name }}</option>{% endfor %}
   </select><span id="profile-description" class="help"></span></label>
   <label>Common name<input name="common_name" required maxlength="64" value="{{ form.common_name if form else '' }}" placeholder="iot-md-a1b2c3"></label>
   <label>DNS or IP Subject Alternative Names<textarea name="sans" rows="3" placeholder="iot-md-a1b2c3.home.arpa&#10;192.168.1.42">{{ form.sans if form else '' }}</textarea><span class="help">One per line or comma-separated. Local policy is enforced.</span></label>
