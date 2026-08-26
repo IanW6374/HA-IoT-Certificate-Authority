@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -13,6 +14,9 @@ from pathlib import Path
 
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 DNS_NAME = re.compile(
@@ -120,17 +124,34 @@ class ExternalACME:
             command = [
                 self.binary, "run", "--path", str(work), "--email", settings["email"],
                 "--server", settings["directory_url"], "--dns", "cloudflare",
+                "--dns.resolvers", "1.1.1.1:53,1.0.0.1:53",
+                "--dns.propagation.disable-rns",
                 "--accept-tos", "--key-type", "RSA2048",
             ]
             for name in names:
                 command.extend(("--domains", name))
-            completed = self.runner(
-                command, env=environment, capture_output=True, text=True,
-                timeout=360, check=False,
-            )
+            try:
+                completed = self.runner(
+                    command, env=environment, capture_output=True, text=True,
+                    timeout=360, check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                LOGGER.error(
+                    "Public ACME request timed out after 360 seconds for %s",
+                    ", ".join(names),
+                )
+                raise RuntimeError(
+                    "Public ACME request timed out after 360 seconds"
+                ) from exc
             if completed.returncode:
                 detail = self._safe_error(completed.stderr or completed.stdout)
-                raise RuntimeError("Public ACME request failed" + (": " + detail if detail else ""))
+                LOGGER.error(
+                    "Public ACME request failed for %s: %s",
+                    ", ".join(names), detail or "lego returned no error detail",
+                )
+                raise RuntimeError(
+                    "Public ACME request failed" + (": " + detail if detail else "")
+                )
             certificate_path, key_path = self._issued_paths(work)
             fullchain_pem = certificate_path.read_bytes()
             certificate_pem = self._first_certificate_pem(fullchain_pem)

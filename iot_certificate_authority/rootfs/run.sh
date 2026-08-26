@@ -36,7 +36,7 @@ gunicorn \
     --bind 127.0.0.1:8080 \
     --workers 1 \
     --threads 4 \
-    --timeout 90 \
+    --timeout 420 \
     --access-logfile - \
     --error-logfile - \
     'iot_ca.web:create_app()' &

@@ -1,4 +1,5 @@
 import os
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -78,6 +79,11 @@ class ExternalACMETests(unittest.TestCase):
 
         self.assertEqual(result.certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value, "device.example.com")
         self.assertNotIn("dns-secret", " ".join(captured["command"]))
+        self.assertIn("--dns.propagation.disable-rns", captured["command"])
+        self.assertEqual(
+            captured["command"][captured["command"].index("--dns.resolvers") + 1],
+            "1.1.1.1:53,1.0.0.1:53",
+        )
         self.assertEqual(
             captured["env"]["CF_DNS_API_TOKEN_FILE"], str(client.dns_token_path)
         )
@@ -91,6 +97,22 @@ class ExternalACMETests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "configured DNS suffix"):
             client.issue(["device.other.example"])
+
+    def test_issue_reports_timeout_and_removes_temporary_state(self):
+        def runner(command, **_options):
+            raise subprocess.TimeoutExpired(command, 360)
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="staging", terms_accepted=True, dns_token="dns-secret",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "timed out after 360 seconds"):
+            client.issue(["device.example.com"])
+        self.assertFalse(
+            any(path.name.startswith("issuance-") for path in client.root.iterdir())
+        )
 
 
 if __name__ == "__main__":

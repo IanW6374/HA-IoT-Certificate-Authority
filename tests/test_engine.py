@@ -51,6 +51,19 @@ class EngineTests(unittest.TestCase):
         self.assertIn('step-ca "${CA_CONFIG}"', run_script)
         self.assertNotIn("apply_provisioner_policy()", run_script)
 
+    def test_external_acme_runtime_timeouts_exceed_client_ceiling(self):
+        rootfs = (
+            Path(__file__).parents[1]
+            / "iot_certificate_authority"
+            / "rootfs"
+        )
+        run_script = (rootfs / "run.sh").read_text()
+        nginx = (rootfs / "etc" / "nginx" / "http.d" / "default.conf").read_text()
+
+        self.assertIn("--timeout 420", run_script)
+        self.assertIn("proxy_read_timeout 420s", nginx)
+        self.assertIn("proxy_send_timeout 420s", nginx)
+
 
 if __name__ == "__main__":
     unittest.main()

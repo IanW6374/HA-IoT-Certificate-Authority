@@ -109,7 +109,7 @@
 
       validation.classList.remove("error");
       validation.classList.add("info");
-      validation.textContent = "Validating DNS and requesting the certificate. This can take up to a minute.";
+      validation.textContent = "Validating authoritative DNS and requesting the certificate. This can take several minutes.";
       validation.hidden = false;
       submitButton.disabled = true;
       submitButton.textContent = "Preparing certificate…";

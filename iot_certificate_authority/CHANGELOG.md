@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.5
+
+- Keep nginx and Gunicorn alive longer than the external ACME request ceiling
+  so the portal receives the real result instead of a 504 response.
+- Use public Cloudflare resolvers for DNS-01 discovery and require propagation
+  at authoritative name servers without waiting on stale recursive caches.
+- Write sanitized lego failures and request timeouts to the add-on log.
+- Clarify in-progress messaging for DNS validation that may take several
+  minutes.
+
 ## 0.3.4
 
 - Show public-certificate form validation errors inline inside Home Assistant
