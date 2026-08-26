@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import threading
+import time
+from ipaddress import ip_address
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -25,6 +27,7 @@ def create_app(*, data_root=None, service=None):
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iotmd-enrollment")
     active = set()
     active_lock = threading.Lock()
+    automatic_attempts = {}
 
     def schedule(enrollment_id):
         with active_lock:
@@ -50,6 +53,34 @@ def create_app(*, data_root=None, service=None):
     @app.get("/healthz")
     def health():
         return jsonify({"application": "ok"})
+
+    @app.post("/v1/auto-enrollments")
+    def auto_enrollment():
+        try:
+            source = ip_address(request.remote_addr or "")
+        except ValueError:
+            return jsonify({"error": "Automatic enrollment requires a private LAN client"}), 403
+        if not (source.is_private or source.is_loopback):
+            return jsonify({"error": "Automatic enrollment requires a private LAN client"}), 403
+        now = time.monotonic()
+        attempts = [value for value in automatic_attempts.get(str(source), [])
+                    if now - value < 600]
+        if len(attempts) >= 5:
+            return jsonify({"error": "Automatic enrollment rate limit exceeded"}), 429
+        attempts.append(now)
+        automatic_attempts[str(source)] = attempts
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or set(payload) != {"api_hostname"}:
+            return jsonify({"error": "A Device API hostname is required"}), 400
+        try:
+            package = certificate_service.create_automatic_device_enrollment(
+                payload["api_hostname"]
+            )
+        except PermissionError as exc:
+            return jsonify({"error": str(exc)}), 403
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(package), 201
 
     @app.post("/v1/enrollments/<enrollment_id>")
     def submit(enrollment_id):

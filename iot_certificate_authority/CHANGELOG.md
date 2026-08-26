@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- Add an opt-in, 15-minute automatic IoT MD enrollment window. Private-LAN
+  devices can request a hostname-bound, one-time authorization directly from
+  the provisioning API; requests are rate-limited and audited.
+- Allow the provisioning TLS identity and enrollment packages to use a
+  device-resolvable server name such as `homeassistant.local`.
+
 ## 0.4.0
 
 - Add short-lived, host-bound `.iotenroll` authorizations for automated IoT MD

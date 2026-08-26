@@ -35,6 +35,25 @@ class ExternalACMETests(unittest.TestCase):
         self.assertTrue(settings["zone_token_configured"])
         self.assertEqual(client.dns_token_path.stat().st_mode & 0o777, 0o600)
 
+    def test_automatic_enrollment_opens_a_short_lived_window(self):
+        client = ExternalACME(self.root)
+        settings = client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="staging", terms_accepted=True,
+            dns_token="dns-secret", auto_enroll_enabled=True,
+            provisioning_host="homeassistant.local",
+        )
+        self.assertTrue(settings["auto_enroll_enabled"])
+        self.assertTrue(settings["auto_enroll_until"].endswith("Z"))
+        self.assertEqual(settings["provisioning_host"], "homeassistant.local")
+        disabled = client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="staging", terms_accepted=True,
+            auto_enroll_enabled=False, provisioning_host="homeassistant.local",
+        )
+        self.assertFalse(disabled["auto_enroll_enabled"])
+        self.assertEqual(disabled["auto_enroll_until"], "")
+
     def test_issue_passes_tokens_by_file_and_removes_temporary_keys(self):
         captured = {}
 

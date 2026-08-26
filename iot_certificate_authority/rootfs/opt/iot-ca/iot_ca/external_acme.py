@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,7 @@ DIRECTORIES = {
     "staging": "https://acme-staging-v02.api.letsencrypt.org/directory",
     "production": "https://acme-v02.api.letsencrypt.org/directory",
 }
+AUTO_ENROLLMENT_WINDOW = timedelta(minutes=15)
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,8 @@ class ExternalACME:
             "zone": "",
             "environment": "staging",
             "terms_accepted": False,
+            "auto_enroll_until": "",
+            "provisioning_host": "homeassistant.local",
         }
         try:
             loaded = json.loads(self.settings_path.read_text(encoding="utf-8"))
@@ -71,16 +75,27 @@ class ExternalACME:
         )
         values["dns_token_configured"] = self._has_secret(self.dns_token_path)
         values["zone_token_configured"] = self._has_secret(self.zone_token_path)
+        try:
+            until = datetime.fromisoformat(
+                str(values.get("auto_enroll_until", "")).replace("Z", "+00:00")
+            )
+            values["auto_enroll_enabled"] = until > datetime.now(timezone.utc)
+        except (TypeError, ValueError):
+            values["auto_enroll_enabled"] = False
         return values
 
     def configure(
         self, *, enabled, email, zone, environment, terms_accepted,
-        dns_token="", zone_token="",
+        dns_token="", zone_token="", auto_enroll_enabled=False,
+        provisioning_host="homeassistant.local",
     ):
         enabled = bool(enabled)
         email = str(email or "").strip().lower()
         zone = str(zone or "").strip().lower().rstrip(".")
         environment = str(environment or "staging").strip().lower()
+        provisioning_host = str(
+            provisioning_host or "homeassistant.local"
+        ).strip().lower().rstrip(".")
         if environment not in DIRECTORIES:
             raise ValueError("Public ACME environment must be staging or production")
         if enabled:
@@ -92,6 +107,10 @@ class ExternalACME:
                 raise ValueError("Accept the ACME subscriber agreement before enabling issuance")
             if not str(dns_token or "").strip() and not self._has_secret(self.dns_token_path):
                 raise ValueError("A Cloudflare DNS API token is required")
+        if not DNS_NAME.fullmatch(provisioning_host) or provisioning_host.startswith("*."):
+            raise ValueError("A valid IoT CA provisioning server name is required")
+        if auto_enroll_enabled and not enabled:
+            raise ValueError("Enable public ACME issuance before automatic enrollment")
         self._store_secret(self.dns_token_path, dns_token)
         self._store_secret(self.zone_token_path, zone_token)
         values = {
@@ -101,6 +120,12 @@ class ExternalACME:
             "zone": zone,
             "environment": environment,
             "terms_accepted": bool(terms_accepted),
+            "provisioning_host": provisioning_host,
+            "auto_enroll_until": (
+                (datetime.now(timezone.utc) + AUTO_ENROLLMENT_WINDOW)
+                .replace(microsecond=0).isoformat().replace("+00:00", "Z")
+                if auto_enroll_enabled else ""
+            ),
         }
         temporary = self.settings_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n", encoding="utf-8")

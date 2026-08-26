@@ -162,6 +162,14 @@ dashboard, enter the public portal host label and download the one-time
 authorization. It contains no private key or Cloudflare credential and expires
 after 30 minutes.
 
+For a one-step first boot, set the device-resolvable provisioning server name
+under **Settings**, then open **automatic IoT MD enrollment** for 15 minutes.
+The IoT MD wizard requests the same hostname-bound authorization directly over
+the private-LAN provisioning listener. This bootstrap route is disabled by
+default, accepts only private-LAN clients, is rate-limited and audited, and
+closes automatically. The `.iotenroll` export remains the higher-assurance
+alternative when the setup LAN is not trusted.
+
 In the IoT MD first-boot wizard, the administrator may explicitly choose this
 public workflow, local private-CA ACME, a manual certificate package, or the
 device-generated self-signed fallback. For the public workflow, the device

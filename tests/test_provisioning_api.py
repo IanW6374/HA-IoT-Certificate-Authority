@@ -28,6 +28,15 @@ class FakeService:
             if self.status == 'complete' else None,
         }
 
+    def create_automatic_device_enrollment(self, api_hostname):
+        if api_hostname != 'device.local':
+            raise ValueError('The Device API hostname must be one .local host name')
+        return {
+            'protocol': 'iotmd-enrollment-v1',
+            'api_hostname': api_hostname,
+            'portal_hostname': 'device.example.com',
+        }
+
 
 class ProvisioningAPITests(unittest.TestCase):
     def setUp(self):
@@ -60,6 +69,19 @@ class ProvisioningAPITests(unittest.TestCase):
             status.json['result']['protocol'], 'iotmd-enrollment-v1'
         )
         self.assertEqual(status.headers['Cache-Control'], 'no-store')
+
+    def test_private_lan_auto_enrollment_returns_host_bound_package(self):
+        response = self.client.post(
+            '/v1/auto-enrollments', json={'api_hostname': 'device.local'},
+            environ_base={'REMOTE_ADDR': '192.168.1.50'},
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json['api_hostname'], 'device.local')
+        public = self.client.post(
+            '/v1/auto-enrollments', json={'api_hostname': 'device.local'},
+            environ_base={'REMOTE_ADDR': '8.8.8.8'},
+        )
+        self.assertEqual(public.status_code, 403)
 
 
 if __name__ == '__main__':

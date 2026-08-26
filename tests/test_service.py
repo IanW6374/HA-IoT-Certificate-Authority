@@ -259,6 +259,20 @@ class ServiceTests(unittest.TestCase):
             "error",
         )
 
+    def test_automatic_enrollment_is_opt_in_and_returns_no_private_key(self):
+        external = FakeExternalACME()
+        service = CertificateService(
+            self.root, engine=self.engine, external_acme=external
+        )
+        with self.assertRaisesRegex(PermissionError, "not enabled"):
+            service.create_automatic_device_enrollment("device.local")
+        external.config["auto_enroll_enabled"] = True
+        package = service.create_automatic_device_enrollment("device.local")
+        self.assertEqual(package["api_hostname"], "device.local")
+        self.assertEqual(package["portal_hostname"], "device.example.com")
+        self.assertEqual(package["endpoint"], "https://homeassistant.local:9010")
+        self.assertNotIn("private", str(package).lower())
+
 
 if __name__ == "__main__":
     unittest.main()

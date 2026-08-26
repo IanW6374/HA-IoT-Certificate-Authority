@@ -66,6 +66,8 @@ class CertificateService:
                     "environment": settings["environment"],
                     "dns_token_configured": settings["dns_token_configured"],
                     "zone_token_configured": settings["zone_token_configured"],
+                    "auto_enroll_enabled": settings["auto_enroll_enabled"],
+                    "provisioning_host": settings["provisioning_host"],
                 },
             )
             return settings
@@ -76,7 +78,7 @@ class CertificateService:
             )
             raise
 
-    def create_device_enrollment(self, portal_host: str):
+    def _authorize_device_enrollment(self, portal_host: str, source="manual"):
         external = self.external_acme.settings()
         if not external.get("enabled"):
             raise ValueError("Enable public ACME issuance before creating an enrollment")
@@ -105,7 +107,7 @@ class CertificateService:
         package = {
             "protocol": "iotmd-enrollment-v1",
             "enrollment_id": enrollment_id,
-            "endpoint": "https://" + self.settings()["ca_dns"] + ":9010",
+            "endpoint": "https://" + external["provisioning_host"] + ":9010",
             "token": token,
             "portal_hostname": portal_hostname,
             "api_hostname": api_hostname,
@@ -115,21 +117,39 @@ class CertificateService:
             ),
             "expires_at": expires_at,
         }
-        export_token = self._store_export(
-            (json.dumps(package, indent=2, sort_keys=True) + "\n").encode(),
-            kind="device-enrollment",
-            filename=portal_host + ".iotenroll",
-            lifetime=self.DEVICE_ENROLLMENT_LIFETIME,
-        )
         self.inventory.audit(
             "device-enrollment.authorize", enrollment_id,
             detail={
                 "portal_hostname": portal_hostname,
                 "api_hostname": api_hostname,
                 "expires_at": expires_at,
+                "source": source,
             },
         )
+        return enrollment_id, package
+
+    def create_device_enrollment(self, portal_host: str):
+        enrollment_id, package = self._authorize_device_enrollment(portal_host)
+        export_token = self._store_export(
+            (json.dumps(package, indent=2, sort_keys=True) + "\n").encode(),
+            kind="device-enrollment",
+            filename=portal_host + ".iotenroll",
+            lifetime=self.DEVICE_ENROLLMENT_LIFETIME,
+        )
         return enrollment_id, export_token
+
+    def create_automatic_device_enrollment(self, api_hostname: str):
+        external = self.external_acme.settings()
+        if not external.get("auto_enroll_enabled"):
+            raise PermissionError("Automatic IoT MD enrollment is not enabled")
+        api_hostname = str(api_hostname or "").strip().lower().rstrip(".")
+        if not api_hostname.endswith(".local") or api_hostname.count(".") != 1:
+            raise ValueError("The Device API hostname must be one .local host name")
+        portal_host = api_hostname[:-6]
+        _enrollment_id, package = self._authorize_device_enrollment(
+            portal_host, source="automatic-lan"
+        )
+        return package
 
     def claim_device_enrollment(self, enrollment_id, token, request_value):
         enrollment = self.inventory.claim_device_enrollment(

@@ -112,6 +112,9 @@ class FakeExternalACME:
             "terms_accepted": True,
             "dns_token_configured": True,
             "zone_token_configured": False,
+            "auto_enroll_enabled": False,
+            "auto_enroll_until": "",
+            "provisioning_host": "homeassistant.local",
         }
 
     def settings(self):

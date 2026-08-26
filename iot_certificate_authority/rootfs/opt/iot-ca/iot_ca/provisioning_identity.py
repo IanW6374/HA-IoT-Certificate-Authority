@@ -22,26 +22,38 @@ def ensure_identity(data_root=None):
     identity.mkdir(mode=0o700, parents=True, exist_ok=True)
     certificate_path = identity / "server.crt.pem"
     key_path = identity / "server.key.pem"
+    settings = CertificateService(root).settings()
+    hostname = settings["ca_dns"]
+    names = list(dict.fromkeys((
+        hostname, settings["external_acme"].get(
+            "provisioning_host", "homeassistant.local"
+        ),
+    )))
     if certificate_path.is_file() and key_path.is_file():
         try:
             certificate = x509.load_pem_x509_certificate(certificate_path.read_bytes())
             expiry = getattr(certificate, "not_valid_after_utc", None)
             if expiry is None:
                 expiry = certificate.not_valid_after.replace(tzinfo=timezone.utc)
-            if expiry and expiry > datetime.now(timezone.utc) + timedelta(days=30):
+            sans = certificate.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            ).value.get_values_for_type(x509.DNSName)
+            if (
+                expiry and expiry > datetime.now(timezone.utc) + timedelta(days=30) and
+                set(names).issubset(set(sans))
+            ):
                 return certificate_path, key_path
         except (OSError, ValueError):
             pass
 
-    hostname = engine.settings()["ca_dns"]
     private_key = ec.generate_private_key(ec.SECP256R1())
     csr = CertificateService._csr(
-        private_key, common_name=hostname, sans=[hostname],
+        private_key, common_name=hostname, sans=names,
         server_auth=True, client_auth=False,
     )
     leaf = engine.sign(
         csr_pem=csr.public_bytes(serialization.Encoding.PEM),
-        common_name=hostname, sans=[hostname], validity_days=365,
+        common_name=hostname, sans=names, validity_days=365,
     )
     fullchain = leaf.rstrip() + b"\n" + engine.intermediate_certificate().lstrip()
     key = private_key.private_bytes(

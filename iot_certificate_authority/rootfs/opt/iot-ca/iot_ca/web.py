@@ -421,6 +421,10 @@ def create_app(*, data_root=None, service=None):
                 terms_accepted=request.form.get("terms_accepted") == "on",
                 dns_token=request.form.get("dns_token", ""),
                 zone_token=request.form.get("zone_token", ""),
+                auto_enroll_enabled=request.form.get("auto_enroll_enabled") == "on",
+                provisioning_host=request.form.get(
+                    "provisioning_host", "homeassistant.local"
+                ),
             )
             flash("Public ACME settings saved", "success")
         except Exception as exc:
