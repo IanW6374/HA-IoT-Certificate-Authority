@@ -13,8 +13,8 @@
     <article class="action-card"><h3>Private certificate</h3><p>Issue a private-CA identity for IoT MD or another TLS client or server.</p><a class="button primary" href="{{ url_for('new_certificate') }}">Issue private certificate</a></article>
     {% if external.enabled %}
     <article class="action-card"><h3>Public portal certificate</h3><p>Issue a browser-trusted portal identity using Cloudflare DNS-01.</p><a class="button primary" href="{{ url_for('new_public_certificate') }}">Issue public certificate</a></article>
-    <article class="action-card"><h3>One-time IoT MD authorization</h3><p>Create a host-bound enrollment file for a single device.</p><a class="button primary" href="{{ url_for('new_device_enrollment') }}">Authorize IoT MD</a></article>
-    <article class="action-card"><h3>Automatic IoT MD enrollment</h3><p>Temporarily allow trusted-LAN devices to request host-bound authorization.</p>
+    <article class="action-card"><h3>IoT CA enrollment file (<code>.iotenroll</code>)</h3><p>Create a one-time, host-bound enrollment file for a single IoT MD device.</p><a class="button primary" href="{{ url_for('new_device_enrollment') }}">Create IoT CA enrollment file</a></article>
+    <article class="action-card"><h3>Automatic IoT CA enrollment</h3><p>Temporarily allow trusted-LAN IoT MD devices to request host-bound enrollment.</p>
       {% if external.auto_enroll_enabled %}
       <form method="post" action="{{ url_for('close_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="secondary enrollment-button" type="submit">Enrollment open · <span data-enrollment-countdown data-until="{{ external.auto_enroll_until }}">{{ external.auto_enroll_remaining_seconds }}</span> · close</button></form>
       {% else %}
@@ -22,7 +22,7 @@
       {% endif %}
     </article>
     {% else %}
-    <article class="action-card"><h3>Public and IoT MD enrollment</h3><p>Enable public ACME issuance before using public certificate and automated enrollment actions.</p><a class="button primary" href="{{ url_for('settings') }}">Configure public ACME</a></article>
+    <article class="action-card"><h3>Public certificates and IoT CA enrollment</h3><p>Enable public ACME issuance before using public certificate and IoT CA enrollment actions.</p><a class="button primary" href="{{ url_for('settings') }}">Configure public ACME</a></article>
     {% endif %}
   </div>
 </section>
@@ -35,8 +35,8 @@
 <section class="panel">
   <div class="section-head"><div><p class="eyebrow">Inventory</p><h2>Recent certificates</h2></div><a href="{{ url_for('certificates') }}">View all</a></div>
   {% if dashboard.recent %}
-  <div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>Expires</th><th>Status</th></tr></thead><tbody>
-  {% for certificate in dashboard.recent %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a></td><td>{{ profiles[certificate.profile].name }} · {{ certificate.source|upper }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
+  <div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>Issued</th><th>Expires</th><th>Status</th></tr></thead><tbody>
+  {% for certificate in dashboard.recent %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a><span class="record-meta">Serial …{{ certificate.serial[-12:] }}</span></td><td>{{ profiles[certificate.profile].name }} · {{ certificate.source|upper }}</td><td>{{ certificate.not_before[:10] }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
   </tbody></table></div>
   {% else %}<div class="empty"><p>No certificates have been issued.</p><a class="button" href="{{ url_for('new_certificate', profile='iot_md') }}">Issue the first one</a></div>{% endif %}
 </section>

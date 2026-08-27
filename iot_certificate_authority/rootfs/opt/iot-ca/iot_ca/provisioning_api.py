@@ -44,6 +44,22 @@ def create_app(*, data_root=None, service=None):
 
         executor.submit(run)
 
+    def schedule_renewal(renewal_id):
+        operation = "renewal:" + renewal_id
+        with active_lock:
+            if operation in active:
+                return
+            active.add(operation)
+
+        def run():
+            try:
+                certificate_service.fulfill_device_renewal(renewal_id)
+            finally:
+                with active_lock:
+                    active.discard(operation)
+
+        executor.submit(run)
+
     @app.after_request
     def secure(response):
         response.headers["Cache-Control"] = "no-store"
@@ -59,14 +75,14 @@ def create_app(*, data_root=None, service=None):
         try:
             source = ip_address(request.remote_addr or "")
         except ValueError:
-            return jsonify({"error": "Automatic enrollment requires a private LAN client"}), 403
+            return jsonify({"error": "Automatic IoT CA enrollment requires a private LAN client"}), 403
         if not (source.is_private or source.is_loopback):
-            return jsonify({"error": "Automatic enrollment requires a private LAN client"}), 403
+            return jsonify({"error": "Automatic IoT CA enrollment requires a private LAN client"}), 403
         now = time.monotonic()
         attempts = [value for value in automatic_attempts.get(str(source), [])
                     if now - value < 600]
         if len(attempts) >= 5:
-            return jsonify({"error": "Automatic enrollment rate limit exceeded"}), 429
+            return jsonify({"error": "Automatic IoT CA enrollment rate limit exceeded"}), 429
         attempts.append(now)
         automatic_attempts[str(source)] = attempts
         payload = request.get_json(silent=True)
@@ -116,6 +132,40 @@ def create_app(*, data_root=None, service=None):
         except PermissionError as exc:
             return jsonify({"error": str(exc)}), 401
         code = 422 if value["status"] in {"error", "expired"} else 200
+        return jsonify(value), code
+
+    @app.post("/v1/renewals/<enrollment_id>")
+    def renew(enrollment_id):
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or set(payload) != {
+            "request_id", "poll_token", "portal_csr", "api_csr",
+            "renewal_csr", "renewal_certificate", "proof_signature",
+        }:
+            return jsonify({"error": "A complete signed renewal request is required"}), 400
+        try:
+            renewal = certificate_service.claim_device_renewal(
+                enrollment_id, payload
+            )
+        except PermissionError as exc:
+            return jsonify({"error": str(exc)}), 401
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 409
+        if renewal["status"] == "pending":
+            schedule_renewal(renewal["id"])
+        return jsonify({
+            "status": renewal["status"],
+            "poll": "/v1/renewals/" + renewal["id"],
+        }), 202
+
+    @app.get("/v1/renewals/<renewal_id>")
+    def renewal_status(renewal_id):
+        try:
+            value = certificate_service.device_renewal_status(
+                renewal_id, _bearer()
+            )
+        except PermissionError as exc:
+            return jsonify({"error": str(exc)}), 401
+        code = 422 if value["status"] == "error" else 200
         return jsonify(value), code
 
     return app

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.5
+
+- Standardise the setup method names shared with IoT MD as **Automatic IoT CA
+  enrollment** and **IoT CA enrollment file (`.iotenroll`)**.
+- Add authenticated renewal of the complete IoT MD public portal, private
+  Device API and renewal identity set without exporting device private keys.
+- Link public certificate replacements to the certificate they replace and
+  atomically mark the previous public and private identities as superseded.
+- Reconcile replacement history created by earlier releases so a revoked
+  replacement cannot leave the previous same-name certificate shown as active.
+- Distinguish repeated identities throughout inventory with issue dates and
+  serial suffixes, and show both directions of the replacement relationship.
+
 ## 0.4.4
 
 - Use the pinned lego 5 command and flag contract for public certificate

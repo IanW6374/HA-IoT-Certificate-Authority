@@ -216,6 +216,7 @@ def create_app(*, data_root=None, service=None):
                 common_name=common_name,
                 api_hostname=api_hostname or f"{portal_host}.local",
                 sans=request.form.get("sans", ""),
+                replaces=replacement_id or None,
             )
             session["pending_export_token"] = token
             session["pending_export_kind"] = "certificate"
@@ -260,7 +261,17 @@ def create_app(*, data_root=None, service=None):
         certificate = certificate_service.certificate(certificate_id)
         if not certificate:
             abort(404)
-        return render_template("certificate_detail.html", certificate=certificate)
+        replacement = next(
+            (
+                item for item in certificate_service.certificates()
+                if item.get("renewed_from") == certificate_id
+            ),
+            None,
+        )
+        return render_template(
+            "certificate_detail.html", certificate=certificate,
+            replacement=replacement,
+        )
 
     @app.get("/certificates/<certificate_id>/download")
     def download_certificate(certificate_id):
@@ -437,7 +448,7 @@ def create_app(*, data_root=None, service=None):
         try:
             settings = certificate_service.set_automatic_enrollment(True)
             flash(
-                "Automatic IoT MD enrollment opened for " +
+                "Automatic IoT CA enrollment opened for " +
                 str(settings["auto_enroll_minutes"]) + " minutes",
                 "success",
             )
@@ -463,7 +474,7 @@ def create_app(*, data_root=None, service=None):
         _require_initialized(certificate_service)
         try:
             certificate_service.set_automatic_enrollment(False)
-            flash("Automatic IoT MD enrollment closed", "success")
+            flash("Automatic IoT CA enrollment closed", "success")
         except Exception as exc:
             flash(str(exc), "error")
         return redirect(url_for("dashboard"))

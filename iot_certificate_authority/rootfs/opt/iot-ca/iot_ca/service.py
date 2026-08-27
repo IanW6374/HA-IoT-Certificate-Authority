@@ -14,8 +14,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
@@ -186,7 +188,7 @@ class CertificateService:
     def create_automatic_device_enrollment(self, api_hostname: str):
         external = self.external_acme.settings()
         if not external.get("auto_enroll_enabled"):
-            raise PermissionError("Automatic IoT MD enrollment is not enabled")
+            raise PermissionError("Automatic IoT CA enrollment is not enabled")
         api_hostname = str(api_hostname or "").strip().lower().rstrip(".")
         if not api_hostname.endswith(".local") or api_hostname.count(".") != 1:
             raise ValueError("The Device API hostname must be one .local host name")
@@ -215,6 +217,202 @@ class CertificateService:
             "error": enrollment.get("error"),
             "result": enrollment.get("result"),
         }
+
+    @staticmethod
+    def _renewal_message(enrollment_id, request_value):
+        fields = (
+            "request_id", "poll_token", "portal_csr", "api_csr", "renewal_csr",
+        )
+        return (
+            "iotmd-renewal-v1\n" + str(enrollment_id) + "\n" +
+            "\n".join(str(request_value.get(field, "")) for field in fields)
+        ).encode("ascii")
+
+    def claim_device_renewal(self, enrollment_id, request_value):
+        enrollment_id = str(enrollment_id)
+        request_value = dict(request_value or {})
+        renewal_id = str(request_value.get("request_id", ""))
+        poll_token = str(request_value.get("poll_token", ""))
+        if not re.fullmatch(r"[0-9a-f]{32}", renewal_id):
+            raise ValueError("Renewal request identifier is invalid")
+        if not re.fullmatch(r"[0-9a-f]{64}", poll_token):
+            raise ValueError("Renewal polling token is invalid")
+        existing = self.inventory.device_renewal(renewal_id, poll_token)
+        if existing:
+            return self.inventory.add_device_renewal(
+                renewal_id, enrollment_id, poll_token, request_value
+            )
+        enrollment = self.inventory.device_enrollment_by_id(enrollment_id)
+        if not enrollment or enrollment["status"] != "complete":
+            raise PermissionError("Unknown or incomplete device enrollment")
+        try:
+            certificate_der = base64.b64decode(
+                str(request_value.get("renewal_certificate", "")), validate=True
+            )
+            certificate = x509.load_der_x509_certificate(certificate_der)
+        except Exception as exc:
+            raise PermissionError("Renewal identity certificate is invalid") from exc
+        active = self.inventory.active_certificate(
+            profile="tls-client", common_name=enrollment["renewal_name"]
+        )
+        if (
+            not active or active.get("provisioner") != "iotmd-renewal-identity" or
+            certificate.fingerprint(hashes.SHA256()).hex() != active["fingerprint"]
+        ):
+            raise PermissionError("Renewal identity is not active")
+        names = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        if len(names) != 1 or names[0].value != enrollment["renewal_name"]:
+            raise PermissionError("Renewal identity is authorized for another device")
+        now = datetime.now(timezone.utc)
+        if not (
+            self._certificate_datetime(certificate, "not_valid_before") <= now <
+            self._certificate_datetime(certificate, "not_valid_after")
+        ):
+            raise PermissionError("Renewal identity certificate is outside its validity period")
+        try:
+            usages = certificate.extensions.get_extension_for_class(
+                x509.ExtendedKeyUsage
+            ).value
+        except x509.ExtensionNotFound:
+            usages = []
+        if ExtendedKeyUsageOID.CLIENT_AUTH not in usages:
+            raise PermissionError("Renewal identity certificate cannot authenticate a client")
+        try:
+            raw_signature = bytes.fromhex(str(request_value.get("proof_signature", "")))
+            if len(raw_signature) != 64:
+                raise ValueError
+            signature = encode_dss_signature(
+                int.from_bytes(raw_signature[:32], "big"),
+                int.from_bytes(raw_signature[32:], "big"),
+            )
+            certificate.public_key().verify(
+                signature, self._renewal_message(enrollment_id, request_value),
+                ec.ECDSA(hashes.SHA256()),
+            )
+        except (InvalidSignature, TypeError, ValueError) as exc:
+            raise PermissionError("Renewal proof signature is invalid") from exc
+        self._enrollment_csr(
+            request_value.get("portal_csr"), enrollment["portal_hostname"],
+            require_san=True, required_usage=ExtendedKeyUsageOID.SERVER_AUTH,
+        )
+        self._enrollment_csr(
+            request_value.get("api_csr"), enrollment["api_hostname"],
+            require_san=True, required_usage=ExtendedKeyUsageOID.SERVER_AUTH,
+        )
+        self._enrollment_csr(
+            request_value.get("renewal_csr"), enrollment["renewal_name"],
+            require_san=False, required_usage=ExtendedKeyUsageOID.CLIENT_AUTH,
+        )
+        return self.inventory.add_device_renewal(
+            renewal_id, enrollment_id, poll_token, request_value
+        )
+
+    def device_renewal_status(self, renewal_id, token):
+        renewal = self.inventory.device_renewal(str(renewal_id), str(token))
+        if not renewal:
+            raise PermissionError("Unknown renewal or invalid token")
+        return {
+            "status": renewal["status"], "error": renewal.get("error"),
+            "result": renewal.get("result"),
+        }
+
+    def fulfill_device_renewal(self, renewal_id):
+        renewal = self.inventory.device_renewal_by_id(str(renewal_id))
+        if not renewal or renewal["status"] != "pending":
+            return
+        enrollment = self.inventory.device_enrollment_by_id(
+            renewal["enrollment_id"]
+        )
+        try:
+            request_value = renewal.get("request") or {}
+            portal_csr = self._enrollment_csr(
+                request_value.get("portal_csr"), enrollment["portal_hostname"],
+                require_san=True, required_usage=ExtendedKeyUsageOID.SERVER_AUTH,
+            )
+            api_csr = self._enrollment_csr(
+                request_value.get("api_csr"), enrollment["api_hostname"],
+                require_san=True, required_usage=ExtendedKeyUsageOID.SERVER_AUTH,
+            )
+            renewal_csr = self._enrollment_csr(
+                request_value.get("renewal_csr"), enrollment["renewal_name"],
+                require_san=False, required_usage=ExtendedKeyUsageOID.CLIENT_AUTH,
+            )
+            public_certificate_id = str(uuid.uuid4())
+            public = self.external_acme.issue_csr(
+                portal_csr.public_bytes(serialization.Encoding.PEM),
+                certificate_id=public_certificate_id,
+            )
+            api_pem = self.engine.sign(
+                csr_pem=api_csr.public_bytes(serialization.Encoding.PEM),
+                common_name=enrollment["api_hostname"],
+                sans=[enrollment["api_hostname"]], validity_days=365,
+            )
+            renewal_pem = self.engine.sign(
+                csr_pem=renewal_csr.public_bytes(serialization.Encoding.PEM),
+                common_name=enrollment["renewal_name"], sans=[], validity_days=365,
+            )
+            api_certificate = x509.load_pem_x509_certificate(api_pem)
+            renewal_certificate = x509.load_pem_x509_certificate(renewal_pem)
+            self._record_enrolled_certificate(
+                public.certificate, "public-portal", enrollment["portal_hostname"],
+                [enrollment["portal_hostname"]], "external-acme",
+                self.REVOCABLE_PUBLIC_PROVISIONER, public.certificate_pem,
+                certificate_id=public_certificate_id,
+            )
+            self._record_enrolled_certificate(
+                api_certificate, "tls-server", enrollment["api_hostname"],
+                [enrollment["api_hostname"]], "manual",
+                "iotmd-device-enrollment", api_pem,
+            )
+            self._record_enrolled_certificate(
+                renewal_certificate, "tls-client", enrollment["renewal_name"],
+                [], "manual", "iotmd-renewal-identity", renewal_pem,
+            )
+            api_chain_pem = (
+                api_pem.rstrip() + b"\n" +
+                self.engine.intermediate_certificate().lstrip()
+            )
+            result = {
+                "protocol": "iotmd-renewal-v1",
+                "portal_hostname": enrollment["portal_hostname"],
+                "api_hostname": enrollment["api_hostname"],
+                "portal_certificate_pem": self._b64(public.fullchain_pem),
+                "api_certificate_pem": self._b64(api_chain_pem),
+                "renewal_certificate_der": self._b64(
+                    renewal_certificate.public_bytes(serialization.Encoding.DER)
+                ),
+                "portal_not_before": self._certificate_time(
+                    public.certificate, "not_valid_before"
+                ),
+                "portal_not_after": self._certificate_time(
+                    public.certificate, "not_valid_after"
+                ),
+                "api_not_before": self._certificate_time(
+                    api_certificate, "not_valid_before"
+                ),
+                "api_not_after": self._certificate_time(
+                    api_certificate, "not_valid_after"
+                ),
+                "renewal_not_after": self._certificate_time(
+                    renewal_certificate, "not_valid_after"
+                ),
+            }
+            self.inventory.complete_device_renewal(renewal_id, result)
+            self.inventory.audit(
+                "device-renewal.complete", renewal_id,
+                detail={
+                    "enrollment_id": renewal["enrollment_id"],
+                    "portal_hostname": enrollment["portal_hostname"],
+                    "api_hostname": enrollment["api_hostname"],
+                },
+            )
+        except Exception as exc:
+            self.inventory.fail_device_renewal(renewal_id, str(exc))
+            self.inventory.audit(
+                "device-renewal.complete", renewal_id, success=False,
+                detail={"error": str(exc)},
+            )
+            raise
 
     def fulfill_device_enrollment(self, enrollment_id):
         enrollment = self.inventory.device_enrollment_by_id(str(enrollment_id))
@@ -292,6 +490,18 @@ class CertificateService:
                 "portal_not_after": self._certificate_time(
                     public.certificate, "not_valid_after"
                 ),
+                "portal_not_before": self._certificate_time(
+                    public.certificate, "not_valid_before"
+                ),
+                "api_not_before": self._certificate_time(
+                    api_certificate, "not_valid_before"
+                ),
+                "api_not_after": self._certificate_time(
+                    api_certificate, "not_valid_after"
+                ),
+                "renewal_not_after": self._certificate_time(
+                    renewal_certificate, "not_valid_after"
+                ),
             }
             self.inventory.complete_device_enrollment(enrollment_id, result)
             self.inventory.audit(
@@ -362,7 +572,7 @@ class CertificateService:
             "status": "active", "certificate_pem": certificate_pem,
             "created_at": utc_now(), "renewed_from": None, "revoked_at": None,
             "source": source, "provisioner": provisioner,
-        })
+        }, supersede_matching=True)
 
     @staticmethod
     def _b64(value):
@@ -494,7 +704,10 @@ class CertificateService:
             )
             raise
 
-    def issue_public_portal(self, *, common_name: str, api_hostname: str, sans=""):
+    def issue_public_portal(
+        self, *, common_name: str, api_hostname: str, sans="",
+        replaces: str | None = None,
+    ):
         values = [common_name]
         values.extend(
             item.strip() for item in str(sans or "").replace("\r", "\n").replace(",", "\n").split("\n")
@@ -503,6 +716,19 @@ class CertificateService:
         certificate_id = str(uuid.uuid4())
         api_certificate_id = str(uuid.uuid4())
         try:
+            if replaces:
+                original = self.inventory.certificate(replaces)
+                if not original:
+                    raise ValueError("Replacement certificate not found")
+                if original["status"] != "active":
+                    raise ValueError("Only an active certificate can be replaced")
+                if (
+                    original["profile"] != "public-portal" or
+                    original["source"] != "external-acme"
+                ):
+                    raise ValueError("Only a public portal certificate can be replaced here")
+                if original["common_name"] != common_name:
+                    raise ValueError("A replacement must retain the existing portal identity")
             api_hostname = str(api_hostname or "").strip().lower().rstrip(".")
             if not api_hostname.endswith(".local") or "." in api_hostname[:-6]:
                 raise ValueError(
@@ -552,7 +778,9 @@ class CertificateService:
                 result, names, api_hostname, api_certificate,
                 api_certificate_pem, api_private_key,
             )
-            self.inventory.add_certificate(record)
+            self.inventory.add_certificate(
+                record, supersedes=replaces, supersede_matching=True,
+            )
             self.inventory.add_certificate({
                 "id": api_certificate_id,
                 "profile": "tls-server",
@@ -571,7 +799,7 @@ class CertificateService:
                 "revoked_at": None,
                 "source": "manual",
                 "provisioner": "iot-md-public-profile",
-            })
+            }, supersede_matching=True)
             token = self._store_export(
                 archive, kind="certificate",
                 filename=f"{self._safe_filename(common_name)}-public-portal.zip",
@@ -583,6 +811,7 @@ class CertificateService:
                     "sans": names,
                     "api_hostname": api_hostname,
                     "api_certificate_id": api_certificate_id,
+                    "replaces": replaces,
                     "environment": self.external_acme.settings()["environment"],
                     "provider": "cloudflare",
                 },

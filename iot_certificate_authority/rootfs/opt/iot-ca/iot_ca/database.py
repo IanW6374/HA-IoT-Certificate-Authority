@@ -87,6 +87,21 @@ class Inventory:
                 CREATE INDEX IF NOT EXISTS device_enrollments_expiry
                     ON device_enrollments(expires_at);
 
+                CREATE TABLE IF NOT EXISTS device_renewals (
+                    id TEXT PRIMARY KEY,
+                    enrollment_id TEXT NOT NULL,
+                    token_hash TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    request_json TEXT NOT NULL,
+                    result_json TEXT,
+                    error TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(enrollment_id) REFERENCES device_enrollments(id)
+                );
+                CREATE INDEX IF NOT EXISTS device_renewals_enrollment
+                    ON device_renewals(enrollment_id, created_at);
+
                 CREATE TABLE IF NOT EXISTS audit (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     occurred_at TEXT NOT NULL,
@@ -110,6 +125,35 @@ class Inventory:
                 db.execute(
                     "ALTER TABLE certificates ADD COLUMN provisioner TEXT"
                 )
+            self._reconcile_public_certificate_history(db)
+
+    @staticmethod
+    def _reconcile_public_certificate_history(db):
+        """Repair public replacement lineage created before it was persisted."""
+        rows = db.execute(
+            """
+            SELECT id, common_name, sans_json, status, renewed_from
+            FROM certificates
+            WHERE profile = 'public-portal' AND source = 'external-acme'
+            ORDER BY common_name, not_before, created_at, id
+            """
+        ).fetchall()
+        previous_by_identity = {}
+        for row in rows:
+            identity = row["common_name"]
+            previous = previous_by_identity.get(identity)
+            if previous:
+                if not row["renewed_from"]:
+                    db.execute(
+                        "UPDATE certificates SET renewed_from = ? WHERE id = ?",
+                        (previous["id"], row["id"]),
+                    )
+                if previous["status"] == "active":
+                    db.execute(
+                        "UPDATE certificates SET status = 'superseded' WHERE id = ?",
+                        (previous["id"],),
+                    )
+            previous_by_identity[identity] = row
 
     def audit(self, action: str, object_id: str | None = None, *, success=True, detail=None):
         with self.connection() as db:
@@ -125,22 +169,55 @@ class Inventory:
             ).fetchall()
         return [self._row(row) for row in rows]
 
-    def add_certificate(self, record: dict):
+    def add_certificate(
+        self, record: dict, *, supersedes: str | None = None,
+        supersede_matching: bool = False,
+    ):
         columns = (
             "id", "profile", "common_name", "sans_json", "key_type", "validity_days",
             "serial", "fingerprint", "not_before", "not_after", "status",
             "certificate_pem", "created_at", "renewed_from", "revoked_at",
             "source", "provisioner",
         )
-        values = [
-            record.get(column, "manual" if column == "source" else None)
-            for column in columns
-        ]
         with self.connection() as db:
+            previous = None
+            if supersedes:
+                previous = db.execute(
+                    "SELECT id, status FROM certificates WHERE id = ?",
+                    (supersedes,),
+                ).fetchone()
+                if not previous:
+                    raise ValueError("Replacement certificate not found")
+                if previous["status"] != "active":
+                    raise ValueError("Only an active certificate can be replaced")
+            elif supersede_matching:
+                previous = db.execute(
+                    """
+                    SELECT id, status FROM certificates
+                    WHERE status = 'active' AND profile = ?
+                      AND common_name = ?
+                    ORDER BY not_before DESC, created_at DESC LIMIT 1
+                    """,
+                    (
+                        record["profile"], record["common_name"],
+                    ),
+                ).fetchone()
+            if previous:
+                record = dict(record)
+                record["renewed_from"] = previous["id"]
+            values = [
+                record.get(column, "manual" if column == "source" else None)
+                for column in columns
+            ]
             db.execute(
                 f"INSERT INTO certificates({','.join(columns)}) VALUES({','.join('?' for _ in columns)})",
                 values,
             )
+            if previous:
+                db.execute(
+                    "UPDATE certificates SET status = 'superseded' WHERE id = ?",
+                    (previous["id"],),
+                )
 
     def import_certificate(self, record: dict):
         """Insert an externally issued certificate once and link ACME renewals."""
@@ -197,6 +274,18 @@ class Inventory:
                 "UPDATE certificates SET status = ?, revoked_at = COALESCE(?, revoked_at) WHERE id = ?",
                 (status, revoked_at, certificate_id),
             )
+
+    def active_certificate(self, *, profile: str, common_name: str):
+        with self.connection() as db:
+            row = db.execute(
+                """
+                SELECT * FROM certificates
+                WHERE status = 'active' AND profile = ? AND common_name = ?
+                ORDER BY not_before DESC, created_at DESC LIMIT 1
+                """,
+                (profile, common_name),
+            ).fetchone()
+        return self._row(row) if row else None
 
     def dashboard_counts(self):
         with self.connection() as db:
@@ -290,6 +379,85 @@ class Inventory:
                 "SELECT * FROM device_enrollments WHERE id = ?", (enrollment_id,)
             ).fetchone()
         return self._row(row) if row else None
+
+    def device_renewal(self, renewal_id, token):
+        with self.connection() as db:
+            row = db.execute(
+                """
+                SELECT * FROM device_renewals
+                WHERE id = ? AND token_hash = ?
+                """,
+                (renewal_id, self.token_hash(token)),
+            ).fetchone()
+        return self._row(row) if row else None
+
+    def device_renewal_by_id(self, renewal_id):
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT * FROM device_renewals WHERE id = ?", (renewal_id,)
+            ).fetchone()
+        return self._row(row) if row else None
+
+    def add_device_renewal(self, renewal_id, enrollment_id, token, request_value):
+        encoded = json.dumps(request_value, sort_keys=True, separators=(",", ":"))
+        now = utc_now()
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT * FROM device_renewals WHERE id = ?", (renewal_id,)
+            ).fetchone()
+            if existing:
+                current = self._row(existing)
+                if (
+                    current["enrollment_id"] != enrollment_id or
+                    current["token_hash"] != self.token_hash(token) or
+                    existing["request_json"] != encoded
+                ):
+                    raise ValueError("Renewal request identifier has already been used")
+                return current
+            pending = db.execute(
+                """
+                SELECT id FROM device_renewals
+                WHERE enrollment_id = ? AND status = 'pending' LIMIT 1
+                """,
+                (enrollment_id,),
+            ).fetchone()
+            if pending:
+                raise ValueError("A certificate renewal is already in progress")
+            db.execute(
+                """
+                INSERT INTO device_renewals(
+                    id, enrollment_id, token_hash, status, request_json,
+                    created_at, updated_at
+                ) VALUES(?,?,?,'pending',?,?,?)
+                """,
+                (
+                    renewal_id, enrollment_id, self.token_hash(token), encoded,
+                    now, now,
+                ),
+            )
+        return self.device_renewal(renewal_id, token)
+
+    def complete_device_renewal(self, renewal_id, result):
+        with self.connection() as db:
+            db.execute(
+                """
+                UPDATE device_renewals
+                SET status='complete', result_json=?, error=NULL, updated_at=?
+                WHERE id=?
+                """,
+                (json.dumps(result, sort_keys=True), utc_now(), renewal_id),
+            )
+
+    def fail_device_renewal(self, renewal_id, error):
+        with self.connection() as db:
+            db.execute(
+                """
+                UPDATE device_renewals
+                SET status='error', error=?, updated_at=? WHERE id=?
+                """,
+                (str(error), utc_now(), renewal_id),
+            )
 
     def claim_device_enrollment(self, enrollment_id, token, request_value):
         encoded = json.dumps(request_value, sort_keys=True, separators=(",", ":"))

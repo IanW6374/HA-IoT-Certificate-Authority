@@ -9,8 +9,8 @@
     {% for status in status_filters %}<option value="{{ status }}" {% if status == selected_status %}selected{% endif %}>{{ status|capitalize }}</option>{% endfor %}
   </select>
 </form>
-{% if certificates %}<div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>Source</th><th>SANs</th><th>Expires</th><th>Status</th></tr></thead><tbody>
-{% for certificate in certificates %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a></td><td>{{ profiles[certificate.profile].name }}</td><td>{{ certificate.source|upper }}</td><td>{{ certificate.sans|join(', ') or '—' }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
+{% if certificates %}<div class="table-wrap"><table><thead><tr><th>Common name</th><th>Profile</th><th>Source</th><th>SANs</th><th>Issued</th><th>Expires</th><th>Status</th></tr></thead><tbody>
+{% for certificate in certificates %}<tr><td><a href="{{ url_for('certificate_detail', certificate_id=certificate.id) }}">{{ certificate.common_name }}</a><span class="record-meta">Serial …{{ certificate.serial[-12:] }}</span></td><td>{{ profiles[certificate.profile].name }}</td><td>{{ certificate.source|upper }}</td><td>{{ certificate.sans|join(', ') or '—' }}</td><td>{{ certificate.not_before[:10] }}</td><td>{{ certificate.not_after[:10] }}</td><td><span class="pill {{ certificate.status }}">{{ certificate.status }}</span></td></tr>{% endfor %}
 </tbody></table></div>{% else %}<div class="empty"><p>{% if selected_status == 'all' %}No certificates match this filter.{% else %}No {{ selected_status }} certificates match this filter.{% endif %}</p></div>{% endif %}
 </section>
 {% endblock %}

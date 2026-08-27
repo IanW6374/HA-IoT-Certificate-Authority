@@ -35,13 +35,16 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"Certificate operations at a glance", response.data)
         self.assertIn(b"/api/hassio_ingress/test/certificates", response.data)
         self.assertIn(b"Certificate actions", response.data)
+        self.assertIn(b"Automatic IoT CA enrollment", response.data)
+        self.assertIn(b"IoT CA enrollment file", response.data)
+        self.assertIn(b"Create IoT CA enrollment file", response.data)
         self.assertIn(b"Open for 5 minutes", response.data)
         self.assertGreaterEqual(response.data.count(b'class="button primary"'), 3)
         self.assertIn(b'class="primary" type="submit">Open for 5 minutes', response.data)
 
     def test_automatic_enrollment_is_an_overview_action_with_countdown(self):
         settings = self.client.get("/settings")
-        self.assertIn(b"Automatic enrollment window (minutes)", settings.data)
+        self.assertIn(b"Automatic IoT CA enrollment window (minutes)", settings.data)
         self.assertIn(b'name="auto_enroll_minutes"', settings.data)
         self.assertNotIn(b"Enable automatic IoT MD enrollment", settings.data)
 
@@ -50,7 +53,7 @@ class WebTests(unittest.TestCase):
             data={"csrf_token": self.csrf()}, follow_redirects=True,
         )
         self.assertEqual(opened.status_code, 200)
-        self.assertIn(b"Automatic IoT MD enrollment opened for 5 minutes", opened.data)
+        self.assertIn(b"Automatic IoT CA enrollment opened for 5 minutes", opened.data)
         self.assertIn(b"data-enrollment-countdown", opened.data)
         self.assertIn(b"Enrollment open", opened.data)
 
@@ -58,7 +61,7 @@ class WebTests(unittest.TestCase):
             "/automatic-enrollment/close",
             data={"csrf_token": self.csrf()}, follow_redirects=True,
         )
-        self.assertIn(b"Automatic IoT MD enrollment closed", closed.data)
+        self.assertIn(b"Automatic IoT CA enrollment closed", closed.data)
         self.assertIn(b"Open for 5 minutes", closed.data)
 
     def test_initial_setup_renders_submitable_identity_defaults(self):
@@ -362,6 +365,31 @@ class WebTests(unittest.TestCase):
             replacement.data,
         )
 
+        issued = self.client.post(
+            "/public-certificates/new",
+            data={
+                "csrf_token": self.csrf(), "replaces": certificate_id,
+                "portal_host": "device", "api_hostname": "private-device.local",
+                "sans": "alias.example.com",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(issued.status_code, 200)
+        self.assertIn(b"Certificate package is ready", issued.data)
+        original = self.service.certificate(certificate_id)
+        self.assertEqual(original["status"], "superseded")
+        new_certificate = next(
+            item for item in self.service.certificates()
+            if item["profile"] == "public-portal" and item["status"] == "active"
+        )
+        self.assertEqual(new_certificate["renewed_from"], certificate_id)
+
+        original_detail = self.client.get("/certificates/" + certificate_id)
+        self.assertIn(b"Replaced by", original_detail.data)
+        self.assertIn(new_certificate["id"].encode(), original_detail.data)
+        self.assertIn(b"Issued", original_detail.data)
+        self.assertIn(b"serial", original_detail.data)
+
     def test_public_portal_form_has_ingress_safe_inline_validation(self):
         response = self.client.get("/public-certificates/new")
 
@@ -419,7 +447,7 @@ class WebTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Device enrollment is ready", response.data)
+        self.assertIn(b"IoT CA enrollment file is ready", response.data)
         self.assertIn(b"device.iotenroll", response.data)
         download = self.client.get("/download")
         self.assertEqual(

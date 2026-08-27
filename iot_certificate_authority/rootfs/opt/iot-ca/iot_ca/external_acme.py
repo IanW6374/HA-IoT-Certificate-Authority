@@ -147,10 +147,10 @@ class ExternalACME:
         try:
             auto_enroll_minutes = int(auto_enroll_minutes)
         except (TypeError, ValueError) as exc:
-            raise ValueError("Automatic enrollment duration must be a whole number") from exc
+            raise ValueError("Automatic IoT CA enrollment duration must be a whole number") from exc
         if not MIN_AUTO_ENROLLMENT_MINUTES <= auto_enroll_minutes <= MAX_AUTO_ENROLLMENT_MINUTES:
             raise ValueError(
-                "Automatic enrollment duration must be between 1 and 60 minutes"
+                "Automatic IoT CA enrollment duration must be between 1 and 60 minutes"
             )
         current = self.settings()
         self._store_secret(self.dns_token_path, dns_token)
@@ -173,7 +173,7 @@ class ExternalACME:
     def set_auto_enrollment(self, enabled: bool):
         values = self.settings()
         if enabled and not values["enabled"]:
-            raise ValueError("Enable public ACME issuance before automatic enrollment")
+            raise ValueError("Enable public ACME issuance before Automatic IoT CA enrollment")
         values.pop("directory_url", None)
         values.pop("dns_token_configured", None)
         values.pop("zone_token_configured", None)

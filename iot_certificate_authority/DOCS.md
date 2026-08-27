@@ -161,14 +161,14 @@ workstation and select the named DER files in the IoT MD initial setup wizard.
 The Cloudflare token never goes to the IoT MD device.
 
 The manual ZIP remains available, but version 0.4 also provides automated,
-device-key-preserving provisioning. Choose **Authorize IoT MD** on the
+device-key-preserving provisioning. Choose **Create IoT CA enrollment file** on the
 dashboard, enter the public portal host label and download the one-time
 `.iotenroll` file. The file contains the exact public portal and private
 `<host>.local` identities, the private CA root, endpoint and a random bearer
 authorization. It contains no private key or Cloudflare credential and expires
 after 30 minutes.
 
-For a one-step first boot, open **Automatic IoT MD enrollment** in the
+For a one-step first boot, open **Automatic IoT CA enrollment** in the
 **Certificate actions** panel on Overview. The button displays a live countdown
 and can close the window immediately. Its duration is configured under
 **Settings** from 1 to 60 minutes and defaults to 5 minutes.
@@ -178,16 +178,19 @@ default, accepts only private-LAN clients, is rate-limited and audited, and
 closes automatically. The `.iotenroll` export remains the higher-assurance
 alternative when the setup LAN is not trusted.
 
-In the IoT MD first-boot wizard, the administrator may explicitly choose this
-public workflow, local private-CA ACME, a manual certificate package, or the
-device-generated self-signed fallback. For the public workflow, the device
+In the IoT MD first-boot wizard, the administrator may explicitly choose
+**Automatic IoT CA enrollment**, **IoT CA enrollment file (`.iotenroll`)**,
+**Private CA ACME enrollment**, **Manual certificate package**, or
+**Self-signed certificate**. For either IoT CA enrollment method, the device
 generates independent P-256 portal, Device API and renewal keys locally and
 sends only signed CSRs over pinned HTTPS to TCP 9010. The CA requires exact
 authorized names and key usages. It performs Cloudflare DNS-01 for the portal
 CSR, signs the other CSRs privately, and returns certificates and public trust
 only. The private Device API server response includes its leaf and online
 intermediate so root-trusting clients can build the complete chain. The
-authorization cannot be reused with different requests.
+authorization cannot be reused with different requests. The installed renewal
+identity subsequently rotates the public portal, private Device API, and
+renewal identities together without exporting a device private key.
 
 Neither automated nor manual provisioning calls Cloudflare from the device or
 places DNS credentials on it. This prevents an unprovisioned field device from

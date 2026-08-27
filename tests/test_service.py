@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from iot_ca.service import CertificateService
@@ -164,6 +165,35 @@ class ServiceTests(unittest.TestCase):
                 api_key.public_key().public_numbers(),
             )
 
+    def test_public_portal_replacement_supersedes_both_existing_identities(self):
+        service = CertificateService(
+            self.root, engine=self.engine, external_acme=FakeExternalACME()
+        )
+        original_id, _ = service.issue_public_portal(
+            common_name="device.example.com", api_hostname="device.local"
+        )
+        original_api = next(
+            item for item in service.certificates()
+            if item["provisioner"] == "iot-md-public-profile"
+        )
+
+        replacement_id, _ = service.issue_public_portal(
+            common_name="device.example.com", api_hostname="device.local",
+            replaces=original_id,
+        )
+        replacement = service.certificate(replacement_id)
+        replacement_api = next(
+            item for item in service.certificates()
+            if item["provisioner"] == "iot-md-public-profile"
+            and item["status"] == "active"
+        )
+
+        self.assertEqual(service.certificate(original_id)["status"], "superseded")
+        self.assertEqual(replacement["renewed_from"], original_id)
+        self.assertEqual(service.certificate(original_api["id"])["status"], "superseded")
+        self.assertEqual(replacement_api["renewed_from"], original_api["id"])
+
+
     def test_public_portal_rejects_invalid_private_name_before_acme_request(self):
         external_acme = FakeExternalACME()
         external_acme.issue = Mock(side_effect=AssertionError("ACME must not be called"))
@@ -231,6 +261,90 @@ class ServiceTests(unittest.TestCase):
             2,
         )
         self.assertEqual(len(service.certificates()), 3)
+
+    def test_device_renewal_rotates_public_private_and_renewal_identities(self):
+        service = CertificateService(
+            self.root, engine=self.engine, external_acme=FakeExternalACME()
+        )
+        enrollment_id, export_token = service.create_device_enrollment("device")
+        package = __import__("json").loads(Path(
+            service.export_for_token(export_token)["path"]
+        ).read_text())
+
+        def request_for(name, usage, include_san=True):
+            key = ec.generate_private_key(ec.SECP256R1())
+            builder = x509.CertificateSigningRequestBuilder().subject_name(
+                x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
+            ).add_extension(x509.ExtendedKeyUsage([usage]), critical=False)
+            if include_san:
+                builder = builder.add_extension(
+                    x509.SubjectAlternativeName([x509.DNSName(name)]),
+                    critical=False,
+                )
+            return key, base64.b64encode(
+                builder.sign(key, hashes.SHA256()).public_bytes(
+                    serialization.Encoding.DER
+                )
+            ).decode()
+
+        _portal_key, portal_csr = request_for(
+            package["portal_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
+        )
+        _api_key, api_csr = request_for(
+            package["api_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
+        )
+        renewal_key, renewal_csr = request_for(
+            package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
+        )
+        service.claim_device_enrollment(enrollment_id, package["token"], {
+            "portal_csr": portal_csr, "api_csr": api_csr,
+            "renewal_csr": renewal_csr,
+        })
+        service.fulfill_device_enrollment(enrollment_id)
+        initial = service.device_enrollment_status(
+            enrollment_id, package["token"]
+        )["result"]
+        original_ids = {
+            item["id"] for item in service.certificates()
+            if item["status"] == "active"
+        }
+
+        _new_portal_key, new_portal_csr = request_for(
+            package["portal_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
+        )
+        _new_api_key, new_api_csr = request_for(
+            package["api_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
+        )
+        _new_renewal_key, new_renewal_csr = request_for(
+            package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
+        )
+        renewal = {
+            "request_id": "1" * 32, "poll_token": "2" * 64,
+            "portal_csr": new_portal_csr, "api_csr": new_api_csr,
+            "renewal_csr": new_renewal_csr,
+            "renewal_certificate": initial["renewal_certificate_der"],
+        }
+        signature = renewal_key.sign(
+            service._renewal_message(enrollment_id, renewal),
+            ec.ECDSA(hashes.SHA256()),
+        )
+        r, s = decode_dss_signature(signature)
+        renewal["proof_signature"] = (r.to_bytes(32, "big") + s.to_bytes(32, "big")).hex()
+
+        claimed = service.claim_device_renewal(enrollment_id, renewal)
+        self.assertEqual(claimed["status"], "pending")
+        service.fulfill_device_renewal(renewal["request_id"])
+        completed = service.device_renewal_status(
+            renewal["request_id"], renewal["poll_token"]
+        )
+        self.assertEqual(completed["status"], "complete")
+        self.assertEqual(completed["result"]["protocol"], "iotmd-renewal-v1")
+        records = service.certificates()
+        self.assertEqual(len([item for item in records if item["status"] == "active"]), 3)
+        self.assertTrue(all(
+            service.certificate(certificate_id)["status"] == "superseded"
+            for certificate_id in original_ids
+        ))
 
     def test_device_enrollment_rejects_a_csr_for_another_host(self):
         service = CertificateService(

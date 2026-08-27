@@ -7,6 +7,59 @@ from iot_ca.database import Inventory
 
 
 class DatabaseTests(unittest.TestCase):
+    @staticmethod
+    def certificate_record(certificate_id, serial, issued, *, status="active"):
+        return {
+            "id": certificate_id, "profile": "public-portal",
+            "common_name": "device.example.com",
+            "sans_json": '["device.example.com"]', "key_type": "rsa-2048",
+            "validity_days": 90, "serial": serial,
+            "fingerprint": "fingerprint-" + serial, "not_before": issued,
+            "not_after": "2027-01-01T00:00:00Z", "status": status,
+            "certificate_pem": b"certificate", "created_at": issued,
+            "renewed_from": None, "revoked_at": None,
+            "source": "external-acme", "provisioner": "test",
+        }
+
+    def test_startup_reconciles_existing_public_replacement_history(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "inventory.db"
+            inventory = Inventory(path)
+            inventory.add_certificate(self.certificate_record(
+                "original", "100", "2026-01-01T00:00:00Z"
+            ))
+            replacement = self.certificate_record(
+                "replacement", "200", "2026-02-01T00:00:00Z",
+                status="revoked",
+            )
+            replacement["sans_json"] = '["device.example.com", "alias.example.com"]'
+            inventory.add_certificate(replacement)
+
+            repaired = Inventory(path)
+            self.assertEqual(repaired.certificate("original")["status"], "superseded")
+            self.assertEqual(
+                repaired.certificate("replacement")["renewed_from"], "original"
+            )
+            self.assertEqual(repaired.dashboard_counts()["active"], 0)
+
+    def test_add_certificate_supersedes_matching_identity_atomically(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            inventory = Inventory(Path(temporary) / "inventory.db")
+            inventory.add_certificate(self.certificate_record(
+                "original", "100", "2026-01-01T00:00:00Z"
+            ))
+            inventory.add_certificate(
+                self.certificate_record(
+                    "replacement", "200", "2026-02-01T00:00:00Z"
+                ),
+                supersede_matching=True,
+            )
+
+            self.assertEqual(inventory.certificate("original")["status"], "superseded")
+            self.assertEqual(
+                inventory.certificate("replacement")["renewed_from"], "original"
+            )
+
     def test_device_enrollment_token_is_one_time_and_request_bound(self):
         with tempfile.TemporaryDirectory() as directory:
             inventory = Inventory(Path(directory) / "inventory.db")
