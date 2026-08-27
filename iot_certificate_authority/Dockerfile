@@ -38,8 +38,11 @@ COPY --from=smallstep /usr/local/bin/step /usr/local/bin/step
 COPY --from=smallstep /usr/local/bin/step-ca /usr/local/bin/step-ca
 COPY --from=lego /usr/local/bin/lego /usr/local/bin/lego
 
-RUN lego run --help | grep -q -- "--cert.name" \
-    && lego certificates revoke --help | grep -q -- "--cert.name"
+RUN lego run --help > /tmp/lego-run-help \
+    && grep -F -- "--cert.name" /tmp/lego-run-help \
+    && lego certificates revoke --help > /tmp/lego-revoke-help \
+    && grep -F -- "--cert.name" /tmp/lego-revoke-help \
+    && rm /tmp/lego-run-help /tmp/lego-revoke-help
 
 RUN apk add --no-cache \
         nginx \
