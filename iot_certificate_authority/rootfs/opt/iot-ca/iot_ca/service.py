@@ -32,6 +32,7 @@ class CertificateService:
     PORTAL_HOST = re.compile(
         r"^(?:[a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])$"
     )
+    REVOCABLE_PUBLIC_PROVISIONER = "letsencrypt-cloudflare-dns01-account-v1"
 
     def __init__(
         self, data_root: Path | str, *, engine=None, inventory=None,
@@ -67,7 +68,9 @@ class CertificateService:
                     "dns_token_configured": settings["dns_token_configured"],
                     "zone_token_configured": settings["zone_token_configured"],
                     "auto_enroll_enabled": settings["auto_enroll_enabled"],
+                    "auto_enroll_minutes": settings["auto_enroll_minutes"],
                     "provisioning_host": settings["provisioning_host"],
+                    "provisioning_port": settings["provisioning_port"],
                 },
             )
             return settings
@@ -78,8 +81,47 @@ class CertificateService:
             )
             raise
 
+    def configure_service_ports(self, **values):
+        try:
+            settings = self.engine.configure_service_ports(**values)
+            self.inventory.audit(
+                "ca.service-ports.configure",
+                detail={
+                    "ca_port": settings["ca_port"],
+                    "provisioning_port": settings["provisioning_port"],
+                },
+            )
+            return settings
+        except Exception as exc:
+            self.inventory.audit(
+                "ca.service-ports.configure", success=False,
+                detail={"error": str(exc)},
+            )
+            raise
+
+    def set_automatic_enrollment(self, enabled: bool):
+        try:
+            settings = self.external_acme.set_auto_enrollment(enabled)
+            self.inventory.audit(
+                "device-enrollment.window-open" if enabled
+                else "device-enrollment.window-close",
+                detail={
+                    "duration_minutes": settings["auto_enroll_minutes"],
+                    "open_until": settings["auto_enroll_until"],
+                },
+            )
+            return settings
+        except Exception as exc:
+            self.inventory.audit(
+                "device-enrollment.window-open" if enabled
+                else "device-enrollment.window-close",
+                success=False, detail={"error": str(exc)},
+            )
+            raise
+
     def _authorize_device_enrollment(self, portal_host: str, source="manual"):
         external = self.external_acme.settings()
+        ca_settings = self.engine.settings()
         if not external.get("enabled"):
             raise ValueError("Enable public ACME issuance before creating an enrollment")
         portal_host = str(portal_host or "").strip().lower()
@@ -107,7 +149,10 @@ class CertificateService:
         package = {
             "protocol": "iotmd-enrollment-v1",
             "enrollment_id": enrollment_id,
-            "endpoint": "https://" + external["provisioning_host"] + ":9010",
+            "endpoint": (
+                "https://" + ca_settings["ca_dns"] + ":" +
+                str(ca_settings["provisioning_port"])
+            ),
             "token": token,
             "portal_hostname": portal_hostname,
             "api_hostname": api_hostname,
@@ -189,8 +234,10 @@ class CertificateService:
                 request_value.get("renewal_csr"), enrollment["renewal_name"],
                 require_san=False, required_usage=ExtendedKeyUsageOID.CLIENT_AUTH,
             )
+            public_certificate_id = str(uuid.uuid4())
             public = self.external_acme.issue_csr(
-                portal_csr.public_bytes(serialization.Encoding.PEM)
+                portal_csr.public_bytes(serialization.Encoding.PEM),
+                certificate_id=public_certificate_id,
             )
             api_pem = self.engine.sign(
                 csr_pem=api_csr.public_bytes(serialization.Encoding.PEM),
@@ -207,7 +254,8 @@ class CertificateService:
             self._record_enrolled_certificate(
                 public.certificate, "public-portal", enrollment["portal_hostname"],
                 [enrollment["portal_hostname"]], "external-acme",
-                "letsencrypt-cloudflare-dns01", public.certificate_pem,
+                self.REVOCABLE_PUBLIC_PROVISIONER, public.certificate_pem,
+                certificate_id=public_certificate_id,
             )
             self._record_enrolled_certificate(
                 api_certificate, "tls-server", enrollment["api_hostname"],
@@ -294,7 +342,7 @@ class CertificateService:
 
     def _record_enrolled_certificate(
         self, certificate, profile, common_name, sans, source, provisioner,
-        certificate_pem,
+        certificate_pem, certificate_id=None,
     ):
         validity = max(
             1,
@@ -304,7 +352,7 @@ class CertificateService:
             ).days,
         )
         self.inventory.add_certificate({
-            "id": str(uuid.uuid4()), "profile": profile,
+            "id": str(certificate_id or uuid.uuid4()), "profile": profile,
             "common_name": common_name, "sans_json": json.dumps(sans),
             "key_type": "ec-p256", "validity_days": validity,
             "serial": str(certificate.serial_number),
@@ -460,7 +508,9 @@ class CertificateService:
                 raise ValueError(
                     "The private Device API hostname must be a single-label .local name"
                 )
-            result = self.external_acme.issue(values)
+            result = self.external_acme.issue(
+                values, certificate_id=certificate_id
+            )
             certificate = result.certificate
             names = self._certificate_dns_names(certificate) or values
             common_name = names[0]
@@ -496,7 +546,7 @@ class CertificateService:
                 "renewed_from": None,
                 "revoked_at": None,
                 "source": "external-acme",
-                "provisioner": "letsencrypt-cloudflare-dns01",
+                "provisioner": self.REVOCABLE_PUBLIC_PROVISIONER,
             }
             archive = self._public_portal_export(
                 result, names, api_hostname, api_certificate,
@@ -595,15 +645,22 @@ class CertificateService:
             raise ValueError("Certificate not found")
         if certificate["status"] != "active":
             raise ValueError("Only active certificates can be revoked")
-        if certificate.get("source") == "external-acme":
-            raise ValueError(
-                "Public portal certificates must be replaced through external ACME; "
-                "their private keys are not retained for revocation"
-            )
         try:
-            self.engine.revoke(certificate["serial"])
+            if certificate.get("source") == "external-acme":
+                if certificate.get("provisioner") != self.REVOCABLE_PUBLIC_PROVISIONER:
+                    raise ValueError(
+                        "This public certificate predates managed revocation. Issue a "
+                        "replacement with the current IoT CA release, then retire the "
+                        "older certificate."
+                    )
+                self.external_acme.revoke(certificate_id)
+            else:
+                self.engine.revoke(certificate["serial"])
             self.inventory.set_certificate_status(certificate_id, "revoked", revoked_at=utc_now())
-            self.inventory.audit("certificate.revoke", certificate_id)
+            self.inventory.audit(
+                "certificate.revoke", certificate_id,
+                detail={"source": certificate.get("source", "manual")},
+            )
         except Exception as exc:
             self.inventory.audit(
                 "certificate.revoke", certificate_id, success=False, detail={"error": str(exc)}

@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import uuid
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +31,9 @@ DIRECTORIES = {
     "staging": "https://acme-staging-v02.api.letsencrypt.org/directory",
     "production": "https://acme-v02.api.letsencrypt.org/directory",
 }
-AUTO_ENROLLMENT_WINDOW = timedelta(minutes=15)
+DEFAULT_AUTO_ENROLLMENT_MINUTES = 5
+MIN_AUTO_ENROLLMENT_MINUTES = 1
+MAX_AUTO_ENROLLMENT_MINUTES = 60
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,8 @@ class ExternalACME:
         self.settings_path = self.root / "settings.json"
         self.dns_token_path = self.root / "cloudflare-dns-token"
         self.zone_token_path = self.root / "cloudflare-zone-token"
+        self.storage_path = self.root / "lego"
+        self.storage_path.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.runner = runner or subprocess.run
         self.binary = binary
 
@@ -62,7 +67,9 @@ class ExternalACME:
             "environment": "staging",
             "terms_accepted": False,
             "auto_enroll_until": "",
+            "auto_enroll_minutes": DEFAULT_AUTO_ENROLLMENT_MINUTES,
             "provisioning_host": "homeassistant.local",
+            "provisioning_port": 9010,
         }
         try:
             loaded = json.loads(self.settings_path.read_text(encoding="utf-8"))
@@ -82,12 +89,34 @@ class ExternalACME:
             values["auto_enroll_enabled"] = until > datetime.now(timezone.utc)
         except (TypeError, ValueError):
             values["auto_enroll_enabled"] = False
+        try:
+            minutes = int(values.get(
+                "auto_enroll_minutes", DEFAULT_AUTO_ENROLLMENT_MINUTES
+            ))
+        except (TypeError, ValueError):
+            minutes = DEFAULT_AUTO_ENROLLMENT_MINUTES
+        values["auto_enroll_minutes"] = max(
+            MIN_AUTO_ENROLLMENT_MINUTES,
+            min(minutes, MAX_AUTO_ENROLLMENT_MINUTES),
+        )
+        values["auto_enroll_remaining_seconds"] = max(
+            0,
+            int((until - datetime.now(timezone.utc)).total_seconds())
+            if values["auto_enroll_enabled"] else 0,
+        )
+        try:
+            provisioning_port = int(values.get("provisioning_port", 9010))
+        except (TypeError, ValueError):
+            provisioning_port = 9010
+        values["provisioning_port"] = (
+            provisioning_port if 1 <= provisioning_port <= 65535 else 9010
+        )
         return values
 
     def configure(
         self, *, enabled, email, zone, environment, terms_accepted,
-        dns_token="", zone_token="", auto_enroll_enabled=False,
-        provisioning_host="homeassistant.local",
+        dns_token="", zone_token="", auto_enroll_minutes=DEFAULT_AUTO_ENROLLMENT_MINUTES,
+        provisioning_host="homeassistant.local", provisioning_port=9010,
     ):
         enabled = bool(enabled)
         email = str(email or "").strip().lower()
@@ -96,6 +125,10 @@ class ExternalACME:
         provisioning_host = str(
             provisioning_host or "homeassistant.local"
         ).strip().lower().rstrip(".")
+        try:
+            provisioning_port = int(provisioning_port or 9010)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("IoT CA provisioning port must be a whole number") from exc
         if environment not in DIRECTORIES:
             raise ValueError("Public ACME environment must be staging or production")
         if enabled:
@@ -109,8 +142,17 @@ class ExternalACME:
                 raise ValueError("A Cloudflare DNS API token is required")
         if not DNS_NAME.fullmatch(provisioning_host) or provisioning_host.startswith("*."):
             raise ValueError("A valid IoT CA provisioning server name is required")
-        if auto_enroll_enabled and not enabled:
-            raise ValueError("Enable public ACME issuance before automatic enrollment")
+        if provisioning_port < 1 or provisioning_port > 65535:
+            raise ValueError("IoT CA provisioning port must be between 1 and 65535")
+        try:
+            auto_enroll_minutes = int(auto_enroll_minutes)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Automatic enrollment duration must be a whole number") from exc
+        if not MIN_AUTO_ENROLLMENT_MINUTES <= auto_enroll_minutes <= MAX_AUTO_ENROLLMENT_MINUTES:
+            raise ValueError(
+                "Automatic enrollment duration must be between 1 and 60 minutes"
+            )
+        current = self.settings()
         self._store_secret(self.dns_token_path, dns_token)
         self._store_secret(self.zone_token_path, zone_token)
         values = {
@@ -121,22 +163,42 @@ class ExternalACME:
             "environment": environment,
             "terms_accepted": bool(terms_accepted),
             "provisioning_host": provisioning_host,
-            "auto_enroll_until": (
-                (datetime.now(timezone.utc) + AUTO_ENROLLMENT_WINDOW)
-                .replace(microsecond=0).isoformat().replace("+00:00", "Z")
-                if auto_enroll_enabled else ""
-            ),
+            "provisioning_port": provisioning_port,
+            "auto_enroll_minutes": auto_enroll_minutes,
+            "auto_enroll_until": current.get("auto_enroll_until", "") if enabled else "",
         }
+        self._write_settings(values)
+        return self.settings()
+
+    def set_auto_enrollment(self, enabled: bool):
+        values = self.settings()
+        if enabled and not values["enabled"]:
+            raise ValueError("Enable public ACME issuance before automatic enrollment")
+        values.pop("directory_url", None)
+        values.pop("dns_token_configured", None)
+        values.pop("zone_token_configured", None)
+        values.pop("auto_enroll_enabled", None)
+        values.pop("auto_enroll_remaining_seconds", None)
+        values["auto_enroll_until"] = (
+            (
+                datetime.now(timezone.utc) +
+                timedelta(minutes=values["auto_enroll_minutes"])
+            ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            if enabled else ""
+        )
+        self._write_settings(values)
+        return self.settings()
+
+    def _write_settings(self, values):
         temporary = self.settings_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         temporary.chmod(0o600)
         os.replace(temporary, self.settings_path)
-        return self.settings()
 
-    def issue(self, names) -> PublicCertificate:
-        return self._issue(names, csr_pem=None)
+    def issue(self, names, certificate_id=None) -> PublicCertificate:
+        return self._issue(names, csr_pem=None, certificate_id=certificate_id)
 
-    def issue_csr(self, csr_pem: bytes) -> PublicCertificate:
+    def issue_csr(self, csr_pem: bytes, certificate_id=None) -> PublicCertificate:
         csr = x509.load_pem_x509_csr(bytes(csr_pem))
         if not csr.is_signature_valid:
             raise ValueError("Public portal CSR signature is invalid")
@@ -152,14 +214,19 @@ class ExternalACME:
                     NameOID.COMMON_NAME
                 )
             ]
-        return self._issue(names, csr_pem=bytes(csr_pem))
+        return self._issue(
+            names, csr_pem=bytes(csr_pem), certificate_id=certificate_id
+        )
 
-    def _issue(self, names, csr_pem=None) -> PublicCertificate:
+    def _issue(self, names, csr_pem=None, certificate_id=None) -> PublicCertificate:
         csr = x509.load_pem_x509_csr(csr_pem) if csr_pem is not None else None
         settings = self.settings()
         if not settings["enabled"]:
             raise ValueError("Public ACME issuance is not enabled")
         names = self._validate_names(names, settings["zone"])
+        certificate_id = str(certificate_id or uuid.uuid4())
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", certificate_id):
+            raise ValueError("Public certificate storage ID is invalid")
         work = Path(tempfile.mkdtemp(prefix="issuance-", dir=self.root))
         try:
             environment = os.environ.copy()
@@ -170,11 +237,13 @@ class ExternalACME:
             if self._has_secret(self.zone_token_path):
                 environment["CF_ZONE_API_TOKEN_FILE"] = str(self.zone_token_path)
             command = [
-                self.binary, "run", "--path", str(work), "--email", settings["email"],
+                self.binary, "run", "--path", str(self.storage_path),
+                "--email", settings["email"],
                 "--server", settings["directory_url"], "--dns", "cloudflare",
                 "--dns.resolvers", "1.1.1.1:53,1.0.0.1:53",
                 "--dns.propagation.disable-rns",
                 "--accept-tos", "--key-type", "RSA2048",
+                "--cert-name", certificate_id,
             ]
             if csr_pem is None:
                 for name in names:
@@ -205,7 +274,9 @@ class ExternalACME:
                 raise RuntimeError(
                     "Public ACME request failed" + (": " + detail if detail else "")
                 )
-            certificate_path = self._issued_certificate_path(work)
+            certificate_path = self._issued_certificate_path(
+                self.storage_path, certificate_id
+            )
             fullchain_pem = certificate_path.read_bytes()
             certificate_pem = self._first_certificate_pem(fullchain_pem)
             certificate = x509.load_pem_x509_certificate(certificate_pem)
@@ -223,7 +294,38 @@ class ExternalACME:
                 raise RuntimeError("Public ACME certificate does not match the submitted CSR")
             return PublicCertificate(certificate, certificate_pem, fullchain_pem, private_key)
         finally:
+            self._remove_leaf_private_material(certificate_id)
             shutil.rmtree(work, ignore_errors=True)
+
+    def revoke(self, certificate_id: str):
+        certificate_id = str(certificate_id or "")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", certificate_id):
+            raise ValueError("Public certificate storage ID is invalid")
+        settings = self.settings()
+        certificate_path = self.storage_path / "certificates" / (certificate_id + ".crt")
+        if not certificate_path.is_file():
+            raise ValueError(
+                "This public certificate predates managed revocation. Issue a replacement "
+                "with the current IoT CA release, then retire the older certificate."
+            )
+        command = [
+            self.binary, "revoke", "--path", str(self.storage_path),
+            "--email", settings["email"], "--server", settings["directory_url"],
+            "--key-type", "RSA2048", "--cert-name", certificate_id,
+            "--reason", "0", "--keep",
+        ]
+        try:
+            completed = self.runner(
+                command, capture_output=True, text=True, timeout=120, check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Public certificate revocation timed out") from exc
+        if completed.returncode:
+            detail = self._safe_error(completed.stderr or completed.stdout)
+            raise RuntimeError(
+                "Public certificate revocation failed" +
+                (": " + detail if detail else "")
+            )
 
     @staticmethod
     def _validate_names(names, zone):
@@ -242,14 +344,19 @@ class ExternalACME:
         return result
 
     @staticmethod
-    def _issued_certificate_path(work):
-        certificates = [
-            path for path in work.rglob("*.crt")
-            if "certificates" in path.parts and not path.name.endswith(".issuer.crt")
-        ]
-        if certificates:
-            return certificates[0]
+    def _issued_certificate_path(storage, certificate_id):
+        certificate = storage / "certificates" / (certificate_id + ".crt")
+        if certificate.is_file():
+            return certificate
         raise RuntimeError("Public ACME client did not produce a certificate")
+
+    def _remove_leaf_private_material(self, certificate_id):
+        certificates = self.storage_path / "certificates"
+        for suffix in (".key", ".pem", ".pfx"):
+            try:
+                (certificates / (certificate_id + suffix)).unlink(missing_ok=True)
+            except OSError:
+                LOGGER.exception("Could not remove public portal private material")
 
     @staticmethod
     def _first_certificate_pem(fullchain):

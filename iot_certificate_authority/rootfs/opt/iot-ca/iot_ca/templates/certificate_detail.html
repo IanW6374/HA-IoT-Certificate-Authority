@@ -25,6 +25,13 @@
 </section>
 {% endif %}
 {% if certificate.status == 'active' and certificate.source == 'external-acme' %}
-<section class="panel"><h2>Public portal lifecycle</h2><p>The private key was removed after the one-time export. Issue a replacement through Public portal certificates before expiry; revocation from this app is unavailable once that key has been removed.</p><a class="button" href="{{ url_for('new_public_certificate') }}">Issue replacement</a></section>
+<section class="grid two">
+  <article class="panel"><h2>Public portal lifecycle</h2><p>The portal private key was removed after the one-time export. Issue a replacement before expiry when rotating this identity.</p><a class="button" href="{{ url_for('new_public_certificate') }}">Issue replacement</a></article>
+  {% if certificate.provisioner == 'letsencrypt-cloudflare-dns01-account-v1' %}
+  <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this public certificate with its ACME issuer? Deployed portals must install a replacement."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke public certificate</h2><p>Requests revocation from the public ACME issuer using the retained ACME account identity. The portal private key is not retained.</p><button class="danger" type="submit">Revoke public certificate</button></form>
+  {% else %}
+  <article class="panel"><h2>Revocation unavailable for this certificate</h2><p>This certificate predates retained ACME account support. Issue a replacement with the current IoT CA release; the replacement can then be revoked here.</p></article>
+  {% endif %}
+</section>
 {% endif %}
 {% endblock %}

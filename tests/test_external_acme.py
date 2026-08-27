@@ -40,17 +40,15 @@ class ExternalACMETests(unittest.TestCase):
         settings = client.configure(
             enabled=True, email="admin@example.com", zone="example.com",
             environment="staging", terms_accepted=True,
-            dns_token="dns-secret", auto_enroll_enabled=True,
+            dns_token="dns-secret", auto_enroll_minutes=7,
             provisioning_host="homeassistant.local",
         )
+        settings = client.set_auto_enrollment(True)
         self.assertTrue(settings["auto_enroll_enabled"])
         self.assertTrue(settings["auto_enroll_until"].endswith("Z"))
+        self.assertEqual(settings["auto_enroll_minutes"], 7)
         self.assertEqual(settings["provisioning_host"], "homeassistant.local")
-        disabled = client.configure(
-            enabled=True, email="admin@example.com", zone="example.com",
-            environment="staging", terms_accepted=True,
-            auto_enroll_enabled=False, provisioning_host="homeassistant.local",
-        )
+        disabled = client.set_auto_enrollment(False)
         self.assertFalse(disabled["auto_enroll_enabled"])
         self.assertEqual(disabled["auto_enroll_until"], "")
 
@@ -61,6 +59,7 @@ class ExternalACMETests(unittest.TestCase):
             captured["command"] = command
             captured["env"] = options["env"]
             work = Path(command[command.index("--path") + 1])
+            certificate_id = command[command.index("--cert-name") + 1]
             output = work / "certificates"
             output.mkdir(parents=True)
             key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -78,10 +77,10 @@ class ExternalACMETests(unittest.TestCase):
                     critical=False,
                 ).sign(key, hashes.SHA256())
             )
-            (output / "device.example.com.crt").write_bytes(
+            (output / (certificate_id + ".crt")).write_bytes(
                 certificate.public_bytes(serialization.Encoding.PEM)
             )
-            (output / "device.example.com.key").write_bytes(
+            (output / (certificate_id + ".key")).write_bytes(
                 key.private_bytes(
                     serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                     serialization.NoEncryption(),
@@ -107,6 +106,8 @@ class ExternalACMETests(unittest.TestCase):
             captured["env"]["CF_DNS_API_TOKEN_FILE"], str(client.dns_token_path)
         )
         self.assertFalse(any(path.name.startswith("issuance-") for path in client.root.iterdir()))
+        self.assertFalse(any((client.storage_path / "certificates").glob("*.key")))
+        self.assertTrue(any((client.storage_path / "certificates").glob("*.crt")))
 
     def test_names_are_restricted_to_configured_zone(self):
         client = ExternalACME(self.root)
@@ -156,6 +157,7 @@ class ExternalACMETests(unittest.TestCase):
         def runner(command, **_options):
             captured["command"] = command
             work = Path(command[command.index("--path") + 1])
+            certificate_id = command[command.index("--cert-name") + 1]
             submitted = x509.load_pem_x509_csr(
                 Path(command[command.index("--csr") + 1]).read_bytes()
             )
@@ -178,7 +180,7 @@ class ExternalACMETests(unittest.TestCase):
                 )
                 .sign(issuer_key, hashes.SHA256())
             )
-            (output / "request.crt").write_bytes(
+            (output / (certificate_id + ".crt")).write_bytes(
                 certificate.public_bytes(serialization.Encoding.PEM)
             )
             return type("Completed", (), {
@@ -200,6 +202,34 @@ class ExternalACMETests(unittest.TestCase):
         self.assertEqual(
             result.certificate.public_key().public_numbers(),
             private_key.public_key().public_numbers(),
+        )
+
+    def test_revoke_uses_retained_account_and_public_certificate(self):
+        captured = {}
+
+        def runner(command, **_options):
+            captured["command"] = command
+            return type("Completed", (), {
+                "returncode": 0, "stdout": "", "stderr": "",
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="production", terms_accepted=True,
+            dns_token="dns-secret",
+        )
+        certificates = client.storage_path / "certificates"
+        certificates.mkdir(parents=True, exist_ok=True)
+        (certificates / "certificate-1.crt").write_text("public certificate")
+
+        client.revoke("certificate-1")
+
+        self.assertEqual(captured["command"][1], "revoke")
+        self.assertIn("--keep", captured["command"])
+        self.assertEqual(
+            captured["command"][captured["command"].index("--cert-name") + 1],
+            "certificate-1",
         )
 
 

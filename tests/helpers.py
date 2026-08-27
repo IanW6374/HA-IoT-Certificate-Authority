@@ -66,8 +66,23 @@ class FakeEngine:
             "allow_public_sans": False,
             "public_ca_url": "https://iot-ca.home.arpa:9000",
             "acme_directory": "https://iot-ca.home.arpa:9000/acme/acme/directory",
+            "ca_port": 9000,
+            "provisioning_port": 9010,
             "initialized_at": "2026-01-01T00:00:00Z",
         }
+
+    def configure_service_ports(self, *, ca_port=9000, provisioning_port=9010):
+        ca_port = int(ca_port)
+        provisioning_port = int(provisioning_port)
+        if ca_port == provisioning_port:
+            raise ValueError("CA/ACME and provisioning ports must be different")
+        values = self.settings()
+        values["ca_port"] = ca_port
+        values["provisioning_port"] = provisioning_port
+        values["public_ca_url"] = f"https://iot-ca.home.arpa:{ca_port}"
+        values["acme_directory"] = values["public_ca_url"] + "/acme/acme/directory"
+        self.settings = lambda: dict(values)
+        return dict(values)
 
     def health(self):
         return {"initialized": True, "online": True}
@@ -114,7 +129,10 @@ class FakeExternalACME:
             "zone_token_configured": False,
             "auto_enroll_enabled": False,
             "auto_enroll_until": "",
+            "auto_enroll_minutes": 5,
+            "auto_enroll_remaining_seconds": 0,
             "provisioning_host": "homeassistant.local",
+            "provisioning_port": 9010,
         }
 
     def settings(self):
@@ -130,7 +148,20 @@ class FakeExternalACME:
         self.config.pop("zone_token", None)
         return self.settings()
 
-    def issue(self, names):
+    def set_auto_enrollment(self, enabled):
+        self.config["auto_enroll_enabled"] = bool(enabled)
+        self.config["auto_enroll_until"] = (
+            (datetime.now(timezone.utc) + timedelta(
+                minutes=self.config["auto_enroll_minutes"]
+            )).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            if enabled else ""
+        )
+        self.config["auto_enroll_remaining_seconds"] = (
+            self.config["auto_enroll_minutes"] * 60 if enabled else 0
+        )
+        return self.settings()
+
+    def issue(self, names, certificate_id=None):
         from iot_ca.external_acme import PublicCertificate
 
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -153,7 +184,7 @@ class FakeExternalACME:
         pem = certificate.public_bytes(serialization.Encoding.PEM)
         return PublicCertificate(certificate, pem, pem, key)
 
-    def issue_csr(self, csr_pem):
+    def issue_csr(self, csr_pem, certificate_id=None):
         from iot_ca.external_acme import PublicCertificate
 
         csr = x509.load_pem_x509_csr(csr_pem)
@@ -180,3 +211,6 @@ class FakeExternalACME:
         )
         pem = certificate.public_bytes(serialization.Encoding.PEM)
         return PublicCertificate(certificate, pem, pem, None)
+
+    def revoke(self, certificate_id):
+        self.revoked_certificate_id = str(certificate_id)

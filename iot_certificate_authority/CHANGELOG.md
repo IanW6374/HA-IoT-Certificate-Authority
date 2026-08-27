@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2
+
+- Group certificate issuance and enrollment controls in a dedicated
+  **Certificate actions** panel on Overview.
+- Move automatic IoT MD enrollment out of Settings, add a live countdown and
+  close control, and make its duration configurable from 1 to 60 minutes with
+  a 5-minute default.
+- Retain the external ACME account identity and public certificate required to
+  revoke newly issued public portal certificates while continuing to delete
+  every portal private key after its one-time export.
+- Allow the externally reachable CA/ACME and provisioning ports to be recorded
+  independently, keeping 9000 and 9010 as their defaults.
+
 ## 0.4.1
 
 - Add an opt-in, 15-minute automatic IoT MD enrollment window. Private-LAN

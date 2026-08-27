@@ -54,7 +54,37 @@ class StepCAEngine:
     def settings(self) -> dict:
         if not self.settings_path.is_file():
             return {}
-        return json.loads(self.settings_path.read_text())
+        values = json.loads(self.settings_path.read_text())
+        values.setdefault("ca_port", 9000)
+        values.setdefault("provisioning_port", 9010)
+        ca_dns = values.get("ca_dns", "iot-ca.home.arpa")
+        values["public_ca_url"] = (
+            f"https://{ca_dns}:{int(values['ca_port'])}"
+        )
+        values["acme_directory"] = (
+            values["public_ca_url"] + "/acme/acme/directory"
+        )
+        return values
+
+    def configure_service_ports(self, *, ca_port=9000, provisioning_port=9010):
+        if not self.initialized:
+            raise StepCAError("Initialize the certificate authority first")
+        try:
+            ca_port = int(ca_port or 9000)
+            provisioning_port = int(provisioning_port or 9010)
+        except (TypeError, ValueError) as exc:
+            raise StepCAError("IoT CA service ports must be whole numbers") from exc
+        if not 1 <= ca_port <= 65535 or not 1 <= provisioning_port <= 65535:
+            raise StepCAError("IoT CA service ports must be between 1 and 65535")
+        if ca_port == provisioning_port:
+            raise StepCAError("CA/ACME and provisioning ports must be different")
+        values = self.settings()
+        values["ca_port"] = ca_port
+        values["provisioning_port"] = provisioning_port
+        values.pop("public_ca_url", None)
+        values.pop("acme_directory", None)
+        self._write_json_atomic(self.settings_path, values)
+        return self.settings()
 
     def initialize(
         self,
@@ -113,6 +143,8 @@ class StepCAEngine:
                     "ca_dns": ca_dns,
                     "allowed_dns_suffix": allowed_dns_suffix,
                     "allow_public_sans": bool(allow_public_sans),
+                    "ca_port": 9000,
+                    "provisioning_port": 9010,
                     "public_ca_url": f"https://{ca_dns}:9000",
                     "acme_directory": f"https://{ca_dns}:9000/acme/acme/directory",
                     "initialized_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),

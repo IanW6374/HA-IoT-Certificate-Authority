@@ -286,8 +286,12 @@ def create_app(*, data_root=None, service=None):
     def revoke_certificate(certificate_id):
         _require_initialized(certificate_service)
         try:
+            certificate = certificate_service.certificate(certificate_id)
             certificate_service.revoke(certificate_id)
-            flash("Certificate revoked. Existing copies remain valid until expiry, but cannot renew.", "success")
+            if certificate and certificate.get("source") == "external-acme":
+                flash("Public certificate revoked with its ACME issuer.", "success")
+            else:
+                flash("Certificate revoked. Existing copies remain valid until expiry, but cannot renew.", "success")
         except Exception as exc:
             flash(str(exc), "error")
         return redirect(url_for("certificate_detail", certificate_id=certificate_id))
@@ -409,6 +413,43 @@ def create_app(*, data_root=None, service=None):
             ca_health=certificate_service.engine.health(),
         )
 
+    @app.post("/automatic-enrollment/open")
+    def open_automatic_enrollment():
+        _require_initialized(certificate_service)
+        try:
+            settings = certificate_service.set_automatic_enrollment(True)
+            flash(
+                "Automatic IoT MD enrollment opened for " +
+                str(settings["auto_enroll_minutes"]) + " minutes",
+                "success",
+            )
+        except Exception as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("dashboard"))
+
+    @app.post("/settings/service-ports")
+    def service_port_settings():
+        _require_initialized(certificate_service)
+        try:
+            certificate_service.configure_service_ports(
+                ca_port=request.form.get("ca_port", "9000"),
+                provisioning_port=request.form.get("provisioning_port", "9010"),
+            )
+            flash("IoT CA service ports saved", "success")
+        except Exception as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("settings"))
+
+    @app.post("/automatic-enrollment/close")
+    def close_automatic_enrollment():
+        _require_initialized(certificate_service)
+        try:
+            certificate_service.set_automatic_enrollment(False)
+            flash("Automatic IoT MD enrollment closed", "success")
+        except Exception as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("dashboard"))
+
     @app.post("/settings/external-acme")
     def external_acme_settings():
         _require_initialized(certificate_service)
@@ -421,7 +462,7 @@ def create_app(*, data_root=None, service=None):
                 terms_accepted=request.form.get("terms_accepted") == "on",
                 dns_token=request.form.get("dns_token", ""),
                 zone_token=request.form.get("zone_token", ""),
-                auto_enroll_enabled=request.form.get("auto_enroll_enabled") == "on",
+                auto_enroll_minutes=request.form.get("auto_enroll_minutes", "5"),
                 provisioning_host=request.form.get(
                     "provisioning_host", "homeassistant.local"
                 ),

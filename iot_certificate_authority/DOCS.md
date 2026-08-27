@@ -43,6 +43,12 @@ on connected services and devices after initialization.
    it only for host-bound certificate provisioning.
 5. Start the app and open its web UI.
 
+Ports 9000 and 9010 are the defaults. If Home Assistant maps either internal
+listener to a different host port, set that mapping in the add-on **Network**
+configuration and record the same externally reachable values under
+**Settings → LAN service endpoints**. IoT CA then publishes the matching ACME
+URL and provisioning endpoint to devices. The two external ports must differ.
+
 The graphical interface is accepted only from Home Assistant Supervisor
 Ingress and is restricted to Home Assistant administrators. The Smallstep CA
 service is exposed separately on TCP port 9000 for ACME and explicitly
@@ -162,8 +168,10 @@ dashboard, enter the public portal host label and download the one-time
 authorization. It contains no private key or Cloudflare credential and expires
 after 30 minutes.
 
-For a one-step first boot, set the device-resolvable provisioning server name
-under **Settings**, then open **automatic IoT MD enrollment** for 15 minutes.
+For a one-step first boot, open **Automatic IoT MD enrollment** in the
+**Certificate actions** panel on Overview. The button displays a live countdown
+and can close the window immediately. Its duration is configured under
+**Settings** from 1 to 60 minutes and defaults to 5 minutes.
 The IoT MD wizard requests the same hostname-bound authorization directly over
 the private-LAN provisioning listener. This bootstrap route is disabled by
 default, accepts only private-LAN clients, is rate-limited and audited, and
@@ -235,6 +243,13 @@ Direct revocation blocks future Smallstep renewal. It does not make an already
 issued certificate fail validation immediately. Existing copies remain valid
 until expiry unless each relying service applies an external revocation
 mechanism. Prefer shorter validity for clients capable of automated renewal.
+
+Public portal certificates issued by current releases can also be revoked from
+their certificate detail page. IoT CA retains the Let’s Encrypt ACME account
+identity and public certificate needed for that request, but still deletes the
+portal private key after creating its one-time export. Public certificates
+issued by 0.4.1 or earlier predate that retained account state and cannot be
+reliably revoked by the app; issue a replacement first.
 
 ## ACME
 

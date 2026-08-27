@@ -24,6 +24,8 @@ publicly trusted IoT MD portal certificates without exposing private services.
   separate private-CA Device API/fleet identity
 - Host-bound IoT MD enrollment files that let devices generate keys locally
   and receive public portal plus private service certificates automatically
+- ACME issuer revocation for public portal certificates issued by current
+  releases without retaining portal private keys
 
 The root private key is re-encrypted with an operator-supplied passphrase,
 placed into a one-time export, and removed from the online CA. Home Assistant

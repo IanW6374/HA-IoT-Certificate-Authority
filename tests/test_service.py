@@ -270,7 +270,7 @@ class ServiceTests(unittest.TestCase):
         package = service.create_automatic_device_enrollment("device.local")
         self.assertEqual(package["api_hostname"], "device.local")
         self.assertEqual(package["portal_hostname"], "device.example.com")
-        self.assertEqual(package["endpoint"], "https://homeassistant.local:9010")
+        self.assertEqual(package["endpoint"], "https://iot-ca.home.arpa:9010")
         self.assertNotIn("private", str(package).lower())
 
 

@@ -24,11 +24,7 @@ def ensure_identity(data_root=None):
     key_path = identity / "server.key.pem"
     settings = CertificateService(root).settings()
     hostname = settings["ca_dns"]
-    names = list(dict.fromkeys((
-        hostname, settings["external_acme"].get(
-            "provisioning_host", "homeassistant.local"
-        ),
-    )))
+    names = [hostname]
     if certificate_path.is_file() and key_path.is_file():
         try:
             certificate = x509.load_pem_x509_certificate(certificate_path.read_bytes())

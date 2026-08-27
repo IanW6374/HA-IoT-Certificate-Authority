@@ -34,6 +34,30 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Certificate operations at a glance", response.data)
         self.assertIn(b"/api/hassio_ingress/test/certificates", response.data)
+        self.assertIn(b"Certificate actions", response.data)
+        self.assertIn(b"Open for 5 minutes", response.data)
+
+    def test_automatic_enrollment_is_an_overview_action_with_countdown(self):
+        settings = self.client.get("/settings")
+        self.assertIn(b"Automatic enrollment window (minutes)", settings.data)
+        self.assertIn(b'name="auto_enroll_minutes"', settings.data)
+        self.assertNotIn(b"Enable automatic IoT MD enrollment", settings.data)
+
+        opened = self.client.post(
+            "/automatic-enrollment/open",
+            data={"csrf_token": self.csrf()}, follow_redirects=True,
+        )
+        self.assertEqual(opened.status_code, 200)
+        self.assertIn(b"Automatic IoT MD enrollment opened for 5 minutes", opened.data)
+        self.assertIn(b"data-enrollment-countdown", opened.data)
+        self.assertIn(b"Enrollment open", opened.data)
+
+        closed = self.client.post(
+            "/automatic-enrollment/close",
+            data={"csrf_token": self.csrf()}, follow_redirects=True,
+        )
+        self.assertIn(b"Automatic IoT MD enrollment closed", closed.data)
+        self.assertIn(b"Open for 5 minutes", closed.data)
 
     def test_initial_setup_renders_submitable_identity_defaults(self):
         engine = FakeEngine()
@@ -257,6 +281,25 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"Public ACME settings saved", saved.data)
         self.assertNotIn(b"new-dns-secret", saved.data)
 
+    def test_both_lan_service_ports_are_configurable_with_existing_defaults(self):
+        settings = self.client.get("/settings")
+        self.assertIn(b'name="ca_port"', settings.data)
+        self.assertIn(b'value="9000"', settings.data)
+        self.assertIn(b'name="provisioning_port"', settings.data)
+        self.assertIn(b'value="9010"', settings.data)
+
+        saved = self.client.post(
+            "/settings/service-ports",
+            data={
+                "csrf_token": self.csrf(), "ca_port": "9443",
+                "provisioning_port": "9444",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn(b"IoT CA service ports saved", saved.data)
+        self.assertIn(b"https://iot-ca.home.arpa:9443", saved.data)
+        self.assertIn(b'value="9444"', saved.data)
+
     def test_public_portal_route_prepares_complete_profile_export(self):
         response = self.client.post(
             "/public-certificates/new",
@@ -271,6 +314,26 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Certificate package is ready", response.data)
         self.assertIn(b"device.example.com-public-portal.zip", response.data)
+
+    def test_public_portal_certificate_can_be_revoked(self):
+        certificate_id, _token = self.service.issue_public_portal(
+            common_name="device.example.com", api_hostname="device.local"
+        )
+        detail = self.client.get("/certificates/" + certificate_id)
+        self.assertIn(b"Revoke public certificate", detail.data)
+
+        revoked = self.client.post(
+            "/certificates/" + certificate_id + "/revoke",
+            data={"csrf_token": self.csrf()}, follow_redirects=True,
+        )
+        self.assertEqual(revoked.status_code, 200)
+        self.assertIn(b"Public certificate revoked with its ACME issuer", revoked.data)
+        self.assertEqual(
+            self.service.external_acme.revoked_certificate_id, certificate_id
+        )
+        self.assertEqual(
+            self.service.certificate(certificate_id)["status"], "revoked"
+        )
 
     def test_public_portal_form_has_ingress_safe_inline_validation(self):
         response = self.client.get("/public-certificates/new")
