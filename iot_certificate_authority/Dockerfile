@@ -38,6 +38,9 @@ COPY --from=smallstep /usr/local/bin/step /usr/local/bin/step
 COPY --from=smallstep /usr/local/bin/step-ca /usr/local/bin/step-ca
 COPY --from=lego /usr/local/bin/lego /usr/local/bin/lego
 
+RUN lego run --help | grep -q -- "--cert.name" \
+    && lego certificates revoke --help | grep -q -- "--cert.name"
+
 RUN apk add --no-cache \
         nginx \
         py3-cryptography \

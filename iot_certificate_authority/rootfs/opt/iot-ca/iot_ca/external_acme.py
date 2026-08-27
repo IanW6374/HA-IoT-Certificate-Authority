@@ -243,7 +243,7 @@ class ExternalACME:
                 "--dns.resolvers", "1.1.1.1:53,1.0.0.1:53",
                 "--dns.propagation.disable-rns",
                 "--accept-tos", "--key-type", "RSA2048",
-                "--cert-name", certificate_id,
+                "--cert.name", certificate_id,
             ]
             if csr_pem is None:
                 for name in names:
@@ -309,9 +309,9 @@ class ExternalACME:
                 "with the current IoT CA release, then retire the older certificate."
             )
         command = [
-            self.binary, "revoke", "--path", str(self.storage_path),
+            self.binary, "certificates", "revoke", "--path", str(self.storage_path),
             "--email", settings["email"], "--server", settings["directory_url"],
-            "--key-type", "RSA2048", "--cert-name", certificate_id,
+            "--key-type", "RSA2048", "--cert.name", certificate_id,
             "--reason", "0", "--keep",
         ]
         try:

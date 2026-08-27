@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4
+
+- Use the pinned lego 5 command and flag contract for public certificate
+  issuance, CSR enrollment and revocation.
+- Verify the required `run --cert.name` and `certificates revoke --cert.name`
+  interfaces while building every add-on image.
+
 ## 0.4.3
 
 - Use the same primary action treatment for all available certificate and

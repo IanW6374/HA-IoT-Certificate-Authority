@@ -59,7 +59,7 @@ class ExternalACMETests(unittest.TestCase):
             captured["command"] = command
             captured["env"] = options["env"]
             work = Path(command[command.index("--path") + 1])
-            certificate_id = command[command.index("--cert-name") + 1]
+            certificate_id = command[command.index("--cert.name") + 1]
             output = work / "certificates"
             output.mkdir(parents=True)
             key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -97,6 +97,9 @@ class ExternalACMETests(unittest.TestCase):
 
         self.assertEqual(result.certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value, "device.example.com")
         self.assertNotIn("dns-secret", " ".join(captured["command"]))
+        self.assertEqual(captured["command"][:2], ["lego", "run"])
+        self.assertIn("--cert.name", captured["command"])
+        self.assertNotIn("--cert-name", captured["command"])
         self.assertIn("--dns.propagation.disable-rns", captured["command"])
         self.assertEqual(
             captured["command"][captured["command"].index("--dns.resolvers") + 1],
@@ -157,7 +160,7 @@ class ExternalACMETests(unittest.TestCase):
         def runner(command, **_options):
             captured["command"] = command
             work = Path(command[command.index("--path") + 1])
-            certificate_id = command[command.index("--cert-name") + 1]
+            certificate_id = command[command.index("--cert.name") + 1]
             submitted = x509.load_pem_x509_csr(
                 Path(command[command.index("--csr") + 1]).read_bytes()
             )
@@ -225,10 +228,11 @@ class ExternalACMETests(unittest.TestCase):
 
         client.revoke("certificate-1")
 
-        self.assertEqual(captured["command"][1], "revoke")
+        self.assertEqual(captured["command"][:3], ["lego", "certificates", "revoke"])
         self.assertIn("--keep", captured["command"])
+        self.assertNotIn("--cert-name", captured["command"])
         self.assertEqual(
-            captured["command"][captured["command"].index("--cert-name") + 1],
+            captured["command"][captured["command"].index("--cert.name") + 1],
             "certificate-1",
         )
 
