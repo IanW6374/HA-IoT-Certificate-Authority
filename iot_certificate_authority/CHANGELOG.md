@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3
+
+- Use the same primary action treatment for all available certificate and
+  enrollment operations on the Overview page.
+- Pre-populate public certificate replacements with the existing portal host,
+  private API hostname and additional DNS names.
+
 ## 0.4.2
 
 - Group certificate issuance and enrollment controls in a dedicated

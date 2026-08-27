@@ -36,6 +36,8 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"/api/hassio_ingress/test/certificates", response.data)
         self.assertIn(b"Certificate actions", response.data)
         self.assertIn(b"Open for 5 minutes", response.data)
+        self.assertGreaterEqual(response.data.count(b'class="button primary"'), 3)
+        self.assertIn(b'class="primary" type="submit">Open for 5 minutes', response.data)
 
     def test_automatic_enrollment_is_an_overview_action_with_countdown(self):
         settings = self.client.get("/settings")
@@ -333,6 +335,31 @@ class WebTests(unittest.TestCase):
         )
         self.assertEqual(
             self.service.certificate(certificate_id)["status"], "revoked"
+        )
+
+    def test_public_replacement_form_is_populated_from_existing_identity(self):
+        certificate_id, _token = self.service.issue_public_portal(
+            common_name="device.example.com", api_hostname="private-device.local",
+            sans="alias.example.com",
+        )
+        detail = self.client.get("/certificates/" + certificate_id)
+        self.assertIn(
+            ("/public-certificates/new?replace=" + certificate_id).encode(),
+            detail.data,
+        )
+
+        replacement = self.client.get(
+            "/public-certificates/new?replace=" + certificate_id
+        )
+        self.assertEqual(replacement.status_code, 200)
+        self.assertIn(b"Replace a public portal certificate", replacement.data)
+        self.assertIn(b'name="portal_host"', replacement.data)
+        self.assertIn(b'value="device"', replacement.data)
+        self.assertIn(b'value="private-device.local"', replacement.data)
+        self.assertIn(b">alias.example.com</textarea>", replacement.data)
+        self.assertIn(
+            ('name="replaces" value="' + certificate_id + '"').encode(),
+            replacement.data,
         )
 
     def test_public_portal_form_has_ingress_safe_inline_validation(self):

@@ -12,17 +12,17 @@
   <div class="action-grid">
     <article class="action-card"><h3>Private certificate</h3><p>Issue a private-CA identity for IoT MD or another TLS client or server.</p><a class="button primary" href="{{ url_for('new_certificate') }}">Issue private certificate</a></article>
     {% if external.enabled %}
-    <article class="action-card"><h3>Public portal certificate</h3><p>Issue a browser-trusted portal identity using Cloudflare DNS-01.</p><a class="button" href="{{ url_for('new_public_certificate') }}">Issue public certificate</a></article>
-    <article class="action-card"><h3>One-time IoT MD authorization</h3><p>Create a host-bound enrollment file for a single device.</p><a class="button" href="{{ url_for('new_device_enrollment') }}">Authorize IoT MD</a></article>
+    <article class="action-card"><h3>Public portal certificate</h3><p>Issue a browser-trusted portal identity using Cloudflare DNS-01.</p><a class="button primary" href="{{ url_for('new_public_certificate') }}">Issue public certificate</a></article>
+    <article class="action-card"><h3>One-time IoT MD authorization</h3><p>Create a host-bound enrollment file for a single device.</p><a class="button primary" href="{{ url_for('new_device_enrollment') }}">Authorize IoT MD</a></article>
     <article class="action-card"><h3>Automatic IoT MD enrollment</h3><p>Temporarily allow trusted-LAN devices to request host-bound authorization.</p>
       {% if external.auto_enroll_enabled %}
       <form method="post" action="{{ url_for('close_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="secondary enrollment-button" type="submit">Enrollment open · <span data-enrollment-countdown data-until="{{ external.auto_enroll_until }}">{{ external.auto_enroll_remaining_seconds }}</span> · close</button></form>
       {% else %}
-      <form method="post" action="{{ url_for('open_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Open for {{ external.auto_enroll_minutes }} minutes</button></form>
+      <form method="post" action="{{ url_for('open_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="primary" type="submit">Open for {{ external.auto_enroll_minutes }} minutes</button></form>
       {% endif %}
     </article>
     {% else %}
-    <article class="action-card"><h3>Public and IoT MD enrollment</h3><p>Enable public ACME issuance before using public certificate and automated enrollment actions.</p><a class="button" href="{{ url_for('settings') }}">Configure public ACME</a></article>
+    <article class="action-card"><h3>Public and IoT MD enrollment</h3><p>Enable public ACME issuance before using public certificate and automated enrollment actions.</p><a class="button primary" href="{{ url_for('settings') }}">Configure public ACME</a></article>
     {% endif %}
   </div>
 </section>

@@ -670,6 +670,38 @@ class CertificateService:
     def certificate(self, certificate_id):
         return self.inventory.certificate(certificate_id)
 
+    def public_replacement_defaults(self, certificate_id):
+        certificate = self.certificate(certificate_id)
+        if not certificate or certificate.get("source") != "external-acme":
+            raise ValueError("Public portal certificate not found")
+        zone = self.external_acme.settings()["zone"].strip().lower().rstrip(".")
+        common_name = certificate["common_name"].strip().lower().rstrip(".")
+        suffix = "." + zone
+        if not zone or not common_name.endswith(suffix):
+            raise ValueError("Public certificate is outside the configured DNS suffix")
+        portal_host = common_name[:-len(suffix)]
+        if not self.PORTAL_HOST.fullmatch(portal_host):
+            raise ValueError("Public certificate host cannot be used for replacement")
+        api_hostname = portal_host + ".local"
+        for entry in self.inventory.audit_log(limit=1000):
+            if (
+                entry.get("action") == "external-acme.issue" and
+                entry.get("object_id") == certificate_id and entry.get("success")
+            ):
+                api_hostname = str(
+                    entry.get("detail", {}).get("api_hostname") or api_hostname
+                )
+                break
+        additional_names = [
+            name for name in certificate.get("sans", [])
+            if str(name).lower().rstrip(".") != common_name
+        ]
+        return {
+            "portal_host": portal_host,
+            "api_hostname": api_hostname,
+            "sans": "\n".join(additional_names),
+        }
+
     def certificate_public_bytes(self, certificate_id, encoding="pem"):
         record = self.certificate(certificate_id)
         if not record:

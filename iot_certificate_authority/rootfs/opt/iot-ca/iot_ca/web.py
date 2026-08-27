@@ -180,8 +180,26 @@ def create_app(*, data_root=None, service=None):
         if not external["enabled"]:
             flash("Configure and enable public ACME issuance first", "error")
             return redirect(url_for("settings"))
+        replacement_id = (
+            request.args.get("replace", "") if request.method == "GET"
+            else request.form.get("replaces", "")
+        )
+        replacement = None
+        replacement_form = None
+        if replacement_id:
+            try:
+                replacement = certificate_service.certificate(replacement_id)
+                replacement_form = certificate_service.public_replacement_defaults(
+                    replacement_id
+                )
+            except Exception as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("certificates"))
         if request.method == "GET":
-            return render_template("new_public_certificate.html", external=external)
+            return render_template(
+                "new_public_certificate.html", external=external,
+                form=replacement_form, replacement=replacement,
+            )
         try:
             portal_host = request.form.get("portal_host", "").strip().lower()
             if not re.fullmatch(
@@ -207,7 +225,7 @@ def create_app(*, data_root=None, service=None):
             flash(str(exc), "error")
             return render_template(
                 "new_public_certificate.html", external=external,
-                form=request.form,
+                form=request.form, replacement=replacement,
             ), 400
 
     @app.route("/device-enrollments/new", methods=["GET", "POST"])
