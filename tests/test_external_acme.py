@@ -268,14 +268,35 @@ class ExternalACMETests(unittest.TestCase):
 
     def test_issue_recovers_when_previous_attempt_already_retired_account(self):
         attempts = []
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+        orphan = (
+            self.root / "external-acme" / "lego" / "accounts" /
+            "acme-v02.api.letsencrypt.org" / "admin@example.com"
+        )
 
         def runner(command, **_options):
             attempts.append(list(command))
             if command[1:3] == ["accounts", "register"]:
+                if orphan.exists():
+                    return type("Completed", (), {
+                        "returncode": 1,
+                        "stdout": "",
+                        "stderr": (
+                            "registration: resolve account by key: "
+                            "accountDoesNotExist :: No account exists with the provided key"
+                        ),
+                    })()
+                self._write_registered_account(
+                    client, "admin@example.com", "admin@example.com", server,
+                )
                 return type("Completed", (), {
                     "returncode": 0, "stdout": "", "stderr": "",
                 })()
             if len(attempts) == 1:
+                orphan.mkdir(parents=True)
+                (orphan / "admin@example.com.key").write_text(
+                    "orphaned account key from the previous failed recovery"
+                )
                 return type("Completed", (), {
                     "returncode": 1,
                     "stdout": "",
@@ -332,7 +353,9 @@ class ExternalACMETests(unittest.TestCase):
             result.certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
             "device.example.com",
         )
-        self.assertFalse((client.root / "invalid-accounts").exists())
+        self.assertTrue((orphan / "account.json").is_file())
+        self.assertEqual(len(client._registered_accounts()), 1)
+        self.assertEqual(len(list((client.root / "invalid-accounts").iterdir())), 1)
 
     def test_issue_does_not_replace_account_for_unrelated_acme_failure(self):
         attempts = []

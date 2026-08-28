@@ -278,10 +278,7 @@ class ExternalACME:
             )
             account_retired = False
             if missing_account:
-                account_retired = (
-                    self._quarantine_account(account)
-                    if account.get("_path") else True
-                )
+                account_retired = self._quarantine_account(account)
             if missing_account and account_retired:
                 LOGGER.warning(
                     "Let’s Encrypt does not recognise the selected ACME account; "
@@ -499,14 +496,45 @@ class ExternalACME:
         return result
 
     def _quarantine_account(self, account):
-        account_path = Path(str(account.get("_path") or ""))
         accounts_root = self.storage_path / "accounts"
-        if not account_path.is_dir():
-            return False
-        try:
-            account_path.relative_to(accounts_root)
-        except ValueError:
-            return False
+        account_path = None
+        recorded_path = str(account.get("_path") or "")
+        if recorded_path:
+            candidate = Path(recorded_path)
+            try:
+                candidate.relative_to(accounts_root)
+            except ValueError:
+                candidate = None
+            if candidate is not None and candidate.is_dir():
+                account_path = candidate
+        if account_path is None:
+            server_name = (
+                str(account.get("server") or "")
+                .split("://", 1)[-1].split("/", 1)[0].replace(":", "_")
+            )
+            account_id = str(account.get("id") or "")
+            try:
+                server_directories = tuple(accounts_root.iterdir())
+            except OSError:
+                server_directories = ()
+            for server_directory in server_directories:
+                if not server_directory.is_dir() or server_directory.name != server_name:
+                    continue
+                try:
+                    candidates = tuple(server_directory.iterdir())
+                except OSError:
+                    candidates = ()
+                account_path = next((
+                    candidate for candidate in candidates
+                    if candidate.is_dir() and candidate.name == account_id
+                ), None)
+                if account_path is not None:
+                    break
+        # No local account state is also safe: registration will create a new
+        # account directory and key. This is the expected state after 0.4.7
+        # already quarantined a stale account.
+        if account_path is None:
+            return True
         quarantine = self.root / "invalid-accounts"
         quarantine.mkdir(mode=0o700, parents=True, exist_ok=True)
         target = quarantine / uuid.uuid4().hex

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.9
+
+- Quarantine incomplete lego account directories and orphaned account keys
+  left by an earlier failed recovery before registering the replacement ACME
+  account.
+- Recover correctly when 0.4.7 or 0.4.8 has already retired the original
+  account record, without requiring an add-on reinstall or configuration reset.
+
 ## 0.4.8
 
 - Explicitly register a replacement Let’s Encrypt account after quarantining a
