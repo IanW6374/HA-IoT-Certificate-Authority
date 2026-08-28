@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.7
+
+- Recover automatically when Let’s Encrypt reports that a retained local ACME
+  account no longer exists: quarantine only that stale account, register a new
+  account using the configured identity and retry the pending CSR once.
+- Keep DNS, Cloudflare and other ACME failures separate from account recovery,
+  and replace the raw `accountDoesNotExist` response with an actionable error if
+  the guarded retry also fails.
+
 ## 0.4.6
 
 - Bind each public certificate to the retained ACME account identity that

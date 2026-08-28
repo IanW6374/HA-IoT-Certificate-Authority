@@ -142,6 +142,108 @@ class ExternalACMETests(unittest.TestCase):
         )
         self.assertEqual(retained["id"], "admin@example.com")
 
+    def test_issue_recovers_once_when_retained_account_no_longer_exists(self):
+        attempts = []
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+
+        def runner(command, **_options):
+            attempts.append(list(command))
+            if len(attempts) == 1:
+                return type("Completed", (), {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": (
+                        "acme: error: 400 :: urn:ietf:params:acme:error:"
+                        "accountDoesNotExist :: No account exists with the provided key"
+                    ),
+                })()
+            self._write_registered_account(
+                client, "admin@example.com", "admin@example.com", server,
+            )
+            certificate_id = command[command.index("--cert.name") + 1]
+            output = client.storage_path / "certificates"
+            output.mkdir(parents=True, exist_ok=True)
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            now = datetime.now(timezone.utc)
+            subject = x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "device.example.com")
+            ])
+            certificate = (
+                x509.CertificateBuilder().subject_name(subject).issuer_name(subject)
+                .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                .not_valid_before(now - timedelta(minutes=1))
+                .not_valid_after(now + timedelta(days=90))
+                .add_extension(
+                    x509.SubjectAlternativeName([
+                        x509.DNSName("device.example.com")
+                    ]), critical=False,
+                ).sign(key, hashes.SHA256())
+            )
+            (output / (certificate_id + ".crt")).write_bytes(
+                certificate.public_bytes(serialization.Encoding.PEM)
+            )
+            (output / (certificate_id + ".key")).write_bytes(
+                key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.PKCS8,
+                    serialization.NoEncryption(),
+                )
+            )
+            return type("Completed", (), {
+                "returncode": 0, "stdout": "", "stderr": "",
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="production", terms_accepted=True,
+            dns_token="dns-secret",
+        )
+        self._write_registered_account(
+            client, "admin@example.com", "admin@example.com", server,
+        )
+
+        result = client.issue(["device.example.com"])
+
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(
+            result.certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
+            "device.example.com",
+        )
+        self.assertEqual(len(list((client.root / "invalid-accounts").iterdir())), 1)
+        self.assertEqual(len(client._registered_accounts()), 1)
+        retained = next(client.certificate_accounts_path.glob("*.json"))
+        self.assertNotIn("_path", retained.read_text())
+
+    def test_issue_does_not_replace_account_for_unrelated_acme_failure(self):
+        attempts = []
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+
+        def runner(command, **_options):
+            attempts.append(list(command))
+            return type("Completed", (), {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "cloudflare: failed to find zone for domain",
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="production", terms_accepted=True,
+            dns_token="dns-secret",
+        )
+        self._write_registered_account(
+            client, "admin@example.com", "admin@example.com", server,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "failed to find zone"):
+            client.issue(["device.example.com"])
+
+        self.assertEqual(len(attempts), 1)
+        self.assertFalse((client.root / "invalid-accounts").exists())
+        self.assertEqual(len(client._registered_accounts()), 1)
+
     def test_names_are_restricted_to_configured_zone(self):
         client = ExternalACME(self.root)
         client.configure(

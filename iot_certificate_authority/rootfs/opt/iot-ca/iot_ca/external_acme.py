@@ -271,8 +271,40 @@ class ExternalACME:
                 raise RuntimeError(
                     "Public ACME request timed out after 360 seconds"
                 ) from exc
+            raw_detail = completed.stderr or completed.stdout
+            if (
+                completed.returncode and
+                self._account_does_not_exist(raw_detail) and
+                self._quarantine_account(account)
+            ):
+                LOGGER.warning(
+                    "Let’s Encrypt no longer recognises the retained ACME account; "
+                    "registering a replacement and retrying once"
+                )
+                account = {
+                    field: account[field]
+                    for field in ("id", "email", "server", "key_type")
+                }
+                try:
+                    completed = self.runner(
+                        command, env=environment, capture_output=True, text=True,
+                        timeout=360, check=False,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    LOGGER.error(
+                        "Public ACME account recovery timed out after 360 seconds for %s",
+                        ", ".join(names),
+                    )
+                    raise RuntimeError(
+                        "Public ACME account recovery timed out after 360 seconds"
+                    ) from exc
             if completed.returncode:
                 detail = self._safe_error(completed.stderr or completed.stdout)
+                if self._account_does_not_exist(completed.stderr or completed.stdout):
+                    detail = (
+                        "Let’s Encrypt account recovery failed; verify the configured "
+                        "ACME email and outbound connectivity, then retry"
+                    )
                 LOGGER.error(
                     "Public ACME request failed for %s: %s",
                     ", ".join(names), detail or "lego returned no error detail",
@@ -425,14 +457,37 @@ class ExternalACME:
                 "email": str(account.get("email") or "").strip().lower(),
                 "server": server,
                 "key_type": key_type,
+                "_path": str(account_path.parent),
             })
         return result
+
+    def _quarantine_account(self, account):
+        account_path = Path(str(account.get("_path") or ""))
+        accounts_root = self.storage_path / "accounts"
+        if not account_path.is_dir():
+            return False
+        try:
+            account_path.relative_to(accounts_root)
+        except ValueError:
+            return False
+        quarantine = self.root / "invalid-accounts"
+        quarantine.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target = quarantine / uuid.uuid4().hex
+        try:
+            os.replace(account_path, target)
+        except OSError:
+            LOGGER.exception("Could not quarantine an invalid public ACME account")
+            return False
+        return True
 
     def _store_certificate_account(self, certificate_id, account):
         path = self.certificate_accounts_path / (certificate_id + ".json")
         temporary = path.with_suffix(".tmp")
         temporary.write_text(
-            json.dumps(account, indent=2, sort_keys=True) + "\n",
+            json.dumps({
+                field: account[field]
+                for field in ("id", "email", "server", "key_type")
+            }, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         temporary.chmod(0o600)
@@ -451,6 +506,14 @@ class ExternalACME:
     @staticmethod
     def _same_server(first, second):
         return str(first).rstrip("/") == str(second).rstrip("/")
+
+    @staticmethod
+    def _account_does_not_exist(value):
+        detail = str(value or "").lower()
+        return (
+            "accountdoesnotexist" in detail or
+            "no account exists with the provided key" in detail
+        )
 
     @staticmethod
     def _validate_names(names, zone):
