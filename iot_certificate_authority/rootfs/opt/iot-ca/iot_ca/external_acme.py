@@ -272,19 +272,38 @@ class ExternalACME:
                     "Public ACME request timed out after 360 seconds"
                 ) from exc
             raw_detail = completed.stderr or completed.stdout
-            if (
+            missing_account = (
                 completed.returncode and
-                self._account_does_not_exist(raw_detail) and
-                self._quarantine_account(account)
-            ):
+                self._account_does_not_exist(raw_detail)
+            )
+            account_retired = False
+            if missing_account:
+                account_retired = (
+                    self._quarantine_account(account)
+                    if account.get("_path") else True
+                )
+            if missing_account and account_retired:
                 LOGGER.warning(
-                    "Let’s Encrypt no longer recognises the retained ACME account; "
-                    "registering a replacement and retrying once"
+                    "Let’s Encrypt does not recognise the selected ACME account; "
+                    "registering it and retrying once"
                 )
                 account = {
                     field: account[field]
                     for field in ("id", "email", "server", "key_type")
                 }
+                registration = self._register_account(account, environment)
+                if registration.returncode:
+                    detail = self._safe_error(
+                        registration.stderr or registration.stdout
+                    )
+                    LOGGER.error(
+                        "Public ACME replacement account registration failed: %s",
+                        detail or "lego returned no error detail",
+                    )
+                    raise RuntimeError(
+                        "Public ACME account registration failed" +
+                        (": " + detail if detail else "")
+                    )
                 try:
                     completed = self.runner(
                         command, env=environment, capture_output=True, text=True,
@@ -335,6 +354,24 @@ class ExternalACME:
         finally:
             self._remove_leaf_private_material(certificate_id)
             shutil.rmtree(work, ignore_errors=True)
+
+    def _register_account(self, account, environment):
+        """Create a new remote account after a stale local identity is retired."""
+        command = [
+            self.binary, "accounts", "register", "--path",
+            str(self.storage_path), "--account-id", account["id"],
+            "--email", account["email"], "--server", account["server"],
+            "--accept-tos", "--key-type", account["key_type"],
+        ]
+        try:
+            return self.runner(
+                command, env=environment, capture_output=True, text=True,
+                timeout=120, check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "Public ACME account registration timed out after 120 seconds"
+            ) from exc
 
     def revoke(self, certificate_id: str):
         certificate_id = str(certificate_id or "")

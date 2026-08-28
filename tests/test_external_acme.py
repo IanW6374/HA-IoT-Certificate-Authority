@@ -157,9 +157,13 @@ class ExternalACMETests(unittest.TestCase):
                         "accountDoesNotExist :: No account exists with the provided key"
                     ),
                 })()
-            self._write_registered_account(
-                client, "admin@example.com", "admin@example.com", server,
-            )
+            if command[1:3] == ["accounts", "register"]:
+                self._write_registered_account(
+                    client, "admin@example.com", "admin@example.com", server,
+                )
+                return type("Completed", (), {
+                    "returncode": 0, "stdout": "", "stderr": "",
+                })()
             certificate_id = command[command.index("--cert.name") + 1]
             output = client.storage_path / "certificates"
             output.mkdir(parents=True, exist_ok=True)
@@ -205,7 +209,13 @@ class ExternalACMETests(unittest.TestCase):
 
         result = client.issue(["device.example.com"])
 
-        self.assertEqual(len(attempts), 2)
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(attempts[1][1:3], ["accounts", "register"])
+        self.assertEqual(
+            attempts[1][attempts[1].index("--account-id") + 1],
+            "admin@example.com",
+        )
+        self.assertIn("--accept-tos", attempts[1])
         self.assertEqual(
             result.certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
             "device.example.com",
@@ -214,6 +224,115 @@ class ExternalACMETests(unittest.TestCase):
         self.assertEqual(len(client._registered_accounts()), 1)
         retained = next(client.certificate_accounts_path.glob("*.json"))
         self.assertNotIn("_path", retained.read_text())
+
+    def test_issue_reports_replacement_account_registration_failure(self):
+        attempts = []
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+
+        def runner(command, **_options):
+            attempts.append(list(command))
+            if command[1:3] == ["accounts", "register"]:
+                return type("Completed", (), {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": "acme: registration rejected for configured email",
+                })()
+            return type("Completed", (), {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": (
+                    "acme: error: 400 :: urn:ietf:params:acme:error:"
+                    "accountDoesNotExist :: No account exists with the provided key"
+                ),
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="production", terms_accepted=True,
+            dns_token="dns-secret",
+        )
+        self._write_registered_account(
+            client, "admin@example.com", "admin@example.com", server,
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Public ACME account registration failed: .*configured email",
+        ):
+            client.issue(["device.example.com"])
+
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(attempts[1][1:3], ["accounts", "register"])
+        self.assertEqual(len(list((client.root / "invalid-accounts").iterdir())), 1)
+
+    def test_issue_recovers_when_previous_attempt_already_retired_account(self):
+        attempts = []
+
+        def runner(command, **_options):
+            attempts.append(list(command))
+            if command[1:3] == ["accounts", "register"]:
+                return type("Completed", (), {
+                    "returncode": 0, "stdout": "", "stderr": "",
+                })()
+            if len(attempts) == 1:
+                return type("Completed", (), {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": (
+                        "acme: error: 400 :: urn:ietf:params:acme:error:"
+                        "accountDoesNotExist :: No account exists with the provided key"
+                    ),
+                })()
+            certificate_id = command[command.index("--cert.name") + 1]
+            output = client.storage_path / "certificates"
+            output.mkdir(parents=True, exist_ok=True)
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            now = datetime.now(timezone.utc)
+            subject = x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "device.example.com")
+            ])
+            certificate = (
+                x509.CertificateBuilder().subject_name(subject).issuer_name(subject)
+                .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                .not_valid_before(now - timedelta(minutes=1))
+                .not_valid_after(now + timedelta(days=90))
+                .add_extension(
+                    x509.SubjectAlternativeName([
+                        x509.DNSName("device.example.com")
+                    ]), critical=False,
+                ).sign(key, hashes.SHA256())
+            )
+            (output / (certificate_id + ".crt")).write_bytes(
+                certificate.public_bytes(serialization.Encoding.PEM)
+            )
+            (output / (certificate_id + ".key")).write_bytes(
+                key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.PKCS8,
+                    serialization.NoEncryption(),
+                )
+            )
+            return type("Completed", (), {
+                "returncode": 0, "stdout": "", "stderr": "",
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="admin@example.com", zone="example.com",
+            environment="production", terms_accepted=True,
+            dns_token="dns-secret",
+        )
+
+        result = client.issue(["device.example.com"])
+
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(attempts[1][1:3], ["accounts", "register"])
+        self.assertEqual(
+            result.certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
+            "device.example.com",
+        )
+        self.assertFalse((client.root / "invalid-accounts").exists())
 
     def test_issue_does_not_replace_account_for_unrelated_acme_failure(self):
         attempts = []

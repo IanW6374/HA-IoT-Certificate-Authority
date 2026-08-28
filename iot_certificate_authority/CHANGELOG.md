@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.8
+
+- Explicitly register a replacement Let’s Encrypt account after quarantining a
+  retained account that the ACME service no longer recognises, then retry the
+  interrupted certificate request once.
+- Preserve the sanitized lego account-registration failure in the portal and
+  add-on log instead of replacing it with a generic recovery message.
+
 ## 0.4.7
 
 - Recover automatically when Let’s Encrypt reports that a retained local ACME
