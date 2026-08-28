@@ -261,6 +261,12 @@ class WebTests(unittest.TestCase):
             self.assertIn(b'aria-label="Copy ACME directory URL"', response.data)
             self.assertIn(b'class="copy-icon"', response.data)
 
+        dashboard = self.client.get("/")
+        self.assertIn(b"Service endpoints", dashboard.data)
+        self.assertIn(b'data-copy-target="#issuing-service"', dashboard.data)
+        self.assertIn(b'aria-label="Copy issuing service URL"', dashboard.data)
+        self.assertNotIn(b"<p>Issuing service:", dashboard.data)
+
     def test_public_acme_settings_never_render_tokens(self):
         response = self.client.get("/settings")
         self.assertIn(b"Public portal certificates", response.data)

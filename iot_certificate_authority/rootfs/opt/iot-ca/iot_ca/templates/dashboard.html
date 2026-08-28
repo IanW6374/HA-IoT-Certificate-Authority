@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero">
-  <div><p class="eyebrow">{{ settings.ca_name }}</p><h1>Certificate operations at a glance</h1><p>Issuing service: <code>{{ settings.public_ca_url }}</code></p></div>
+  <div><p class="eyebrow">{{ settings.ca_name }}</p><h1>Certificate operations at a glance</h1></div>
 </section>
 {% if dashboard.root_export_pending %}
 <section class="critical panel"><div><strong>Offline root export is awaiting confirmation</strong><p>Confirm that the downloaded archive and its passphrase are stored in separate offline locations.</p></div><form method="post" action="{{ url_for('recover_root_link') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Review root export</button></form></section>
@@ -42,6 +42,6 @@
 </section>
 <section class="grid two">
   <article class="panel"><p class="eyebrow">Trust</p><h2>Root certificate</h2><p>Install this public certificate in devices and clients that should trust identities issued here.</p><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">Download PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">Download DER</a></div></article>
-  <article class="panel"><p class="eyebrow">Automation</p><h2>ACME directory</h2><div class="copy-field"><code id="acme-directory" class="wrap">{{ settings.acme_directory }}</code><button type="button" class="icon-button" data-copy-target="#acme-directory" aria-label="Copy ACME directory URL" title="Copy ACME directory URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div><p class="muted">ACME clients must trust this CA root and resolve the CA DNS name. Issued certificates are imported into inventory automatically.</p></article>
+  <article class="panel"><p class="eyebrow">Automation</p><h2>Service endpoints</h2><div class="endpoint-list"><div><strong>Issuing service</strong><div class="copy-field"><code id="issuing-service" class="wrap">{{ settings.public_ca_url }}</code><button type="button" class="icon-button" data-copy-target="#issuing-service" aria-label="Copy issuing service URL" title="Copy issuing service URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></div><div><strong>ACME directory</strong><div class="copy-field"><code id="acme-directory" class="wrap">{{ settings.acme_directory }}</code><button type="button" class="icon-button" data-copy-target="#acme-directory" aria-label="Copy ACME directory URL" title="Copy ACME directory URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></div></div><p class="muted">ACME clients must trust this CA root and resolve the CA DNS name. Issued certificates are imported into inventory automatically.</p></article>
 </section>
 {% endblock %}

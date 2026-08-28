@@ -31,7 +31,7 @@
         }
         button.classList.add("copied");
         button.setAttribute("aria-label", "Copied");
-        if (status) status.textContent = "ACME URL copied to clipboard";
+        if (status) status.textContent = "URL copied to clipboard";
       } catch (_error) {
         if (status) status.textContent = "Could not copy automatically; select and copy the URL";
       }

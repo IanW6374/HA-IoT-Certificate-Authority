@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.10
+
+- Group the issuing-service and ACME-directory URLs together in the Overview
+  Automation panel and provide the same accessible copy-to-clipboard control
+  for both endpoints.
+
 ## 0.4.9
 
 - Quarantine incomplete lego account directories and orphaned account keys
