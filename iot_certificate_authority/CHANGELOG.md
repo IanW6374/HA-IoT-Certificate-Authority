@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.6
+
+- Bind each public certificate to the retained ACME account identity that
+  issued it instead of reconstructing that identity from mutable settings.
+- Discover legacy registered accounts and try the matching production or
+  staging accounts when revoking certificates issued before account binding.
+- Ignore unregistered account files left by earlier failed revocation attempts
+  so they cannot prevent a valid retained account from being selected.
+
 ## 0.4.5
 
 - Standardise the setup method names shared with IoT MD as **Automatic IoT CA

@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import tempfile
@@ -20,6 +21,27 @@ class ExternalACMETests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    @staticmethod
+    def _write_registered_account(
+        client, account_id, email, server, key_type="RSA2048"
+    ):
+        server_name = server.split("://", 1)[-1].split("/", 1)[0].replace(":", "_")
+        account_path = (
+            client.storage_path / "accounts" / server_name / account_id
+        )
+        account_path.mkdir(parents=True, exist_ok=True)
+        (account_path / "account.json").write_text(json.dumps({
+            "id": account_id,
+            "email": email,
+            "keyType": key_type,
+            "server": server,
+            "registration": {
+                "body": {"status": "valid"},
+                "uri": "https://acme.example/acct/123",
+            },
+        }))
+        (account_path / (account_id + ".key")).write_text("retained account key")
 
     def test_configuration_keeps_tokens_out_of_public_settings(self):
         client = ExternalACME(self.root)
@@ -98,6 +120,7 @@ class ExternalACMETests(unittest.TestCase):
         self.assertEqual(result.certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value, "device.example.com")
         self.assertNotIn("dns-secret", " ".join(captured["command"]))
         self.assertEqual(captured["command"][:2], ["lego", "run"])
+        self.assertIn("--account-id", captured["command"])
         self.assertIn("--cert.name", captured["command"])
         self.assertNotIn("--cert-name", captured["command"])
         self.assertIn("--dns.propagation.disable-rns", captured["command"])
@@ -111,6 +134,13 @@ class ExternalACMETests(unittest.TestCase):
         self.assertFalse(any(path.name.startswith("issuance-") for path in client.root.iterdir()))
         self.assertFalse(any((client.storage_path / "certificates").glob("*.key")))
         self.assertTrue(any((client.storage_path / "certificates").glob("*.crt")))
+        certificate_id = captured["command"][
+            captured["command"].index("--cert.name") + 1
+        ]
+        retained = json.loads(
+            (client.certificate_accounts_path / (certificate_id + ".json")).read_text()
+        )
+        self.assertEqual(retained["id"], "admin@example.com")
 
     def test_names_are_restricted_to_configured_zone(self):
         client = ExternalACME(self.root)
@@ -222,6 +252,10 @@ class ExternalACMETests(unittest.TestCase):
             environment="production", terms_accepted=True,
             dns_token="dns-secret",
         )
+        self._write_registered_account(
+            client, "admin@example.com", "admin@example.com",
+            "https://acme-v02.api.letsencrypt.org/directory",
+        )
         certificates = client.storage_path / "certificates"
         certificates.mkdir(parents=True, exist_ok=True)
         (certificates / "certificate-1.crt").write_text("public certificate")
@@ -235,6 +269,81 @@ class ExternalACMETests(unittest.TestCase):
             captured["command"][captured["command"].index("--cert.name") + 1],
             "certificate-1",
         )
+        self.assertEqual(
+            captured["command"][captured["command"].index("--account-id") + 1],
+            "admin@example.com",
+        )
+
+    def test_revoke_discovers_issuing_account_after_settings_email_changes(self):
+        captured = {}
+
+        def runner(command, **_options):
+            captured["command"] = command
+            return type("Completed", (), {
+                "returncode": 0, "stdout": "", "stderr": "",
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="new-admin@example.com", zone="example.com",
+            environment="production", terms_accepted=True,
+            dns_token="dns-secret",
+        )
+        self._write_registered_account(
+            client, "original-admin@example.com", "original-admin@example.com",
+            "https://acme-v02.api.letsencrypt.org/directory", "EC256",
+        )
+        certificates = client.storage_path / "certificates"
+        certificates.mkdir(parents=True, exist_ok=True)
+        (certificates / "certificate-2.crt").write_text("public certificate")
+
+        client.revoke("certificate-2")
+
+        self.assertEqual(
+            captured["command"][captured["command"].index("--account-id") + 1],
+            "original-admin@example.com",
+        )
+        self.assertEqual(
+            captured["command"][captured["command"].index("--key-type") + 1],
+            "EC256",
+        )
+        retained = json.loads(
+            (client.certificate_accounts_path / "certificate-2.json").read_text()
+        )
+        self.assertEqual(retained["id"], "original-admin@example.com")
+
+    def test_revoke_tries_retained_accounts_until_issuer_accepts_one(self):
+        attempted = []
+
+        def runner(command, **_options):
+            account_id = command[command.index("--account-id") + 1]
+            attempted.append(account_id)
+            return type("Completed", (), {
+                "returncode": 0 if account_id == "issuer@example.com" else 1,
+                "stdout": "",
+                "stderr": "unauthorized account" if account_id != "issuer@example.com" else "",
+            })()
+
+        client = ExternalACME(self.root, runner=runner)
+        client.configure(
+            enabled=True, email="current@example.com", zone="example.com",
+            environment="production", terms_accepted=True,
+            dns_token="dns-secret",
+        )
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+        self._write_registered_account(
+            client, "current@example.com", "current@example.com", server,
+        )
+        self._write_registered_account(
+            client, "issuer@example.com", "issuer@example.com", server,
+        )
+        certificates = client.storage_path / "certificates"
+        certificates.mkdir(parents=True, exist_ok=True)
+        (certificates / "certificate-3.crt").write_text("public certificate")
+
+        client.revoke("certificate-3")
+
+        self.assertEqual(attempted, ["current@example.com", "issuer@example.com"])
 
 
 if __name__ == "__main__":

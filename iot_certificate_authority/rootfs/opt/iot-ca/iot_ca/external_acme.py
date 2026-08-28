@@ -34,6 +34,9 @@ DIRECTORIES = {
 DEFAULT_AUTO_ENROLLMENT_MINUTES = 5
 MIN_AUTO_ENROLLMENT_MINUTES = 1
 MAX_AUTO_ENROLLMENT_MINUTES = 60
+ACCOUNT_KEY_TYPES = {
+    "EC256", "EC384", "RSA2048", "RSA3072", "RSA4096", "RSA8192",
+}
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,8 @@ class ExternalACME:
         self.zone_token_path = self.root / "cloudflare-zone-token"
         self.storage_path = self.root / "lego"
         self.storage_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.certificate_accounts_path = self.root / "certificate-accounts"
+        self.certificate_accounts_path.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.runner = runner or subprocess.run
         self.binary = binary
 
@@ -227,6 +232,7 @@ class ExternalACME:
         certificate_id = str(certificate_id or uuid.uuid4())
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", certificate_id):
             raise ValueError("Public certificate storage ID is invalid")
+        account = self._account_for_issue(settings)
         work = Path(tempfile.mkdtemp(prefix="issuance-", dir=self.root))
         try:
             environment = os.environ.copy()
@@ -238,11 +244,11 @@ class ExternalACME:
                 environment["CF_ZONE_API_TOKEN_FILE"] = str(self.zone_token_path)
             command = [
                 self.binary, "run", "--path", str(self.storage_path),
-                "--email", settings["email"],
-                "--server", settings["directory_url"], "--dns", "cloudflare",
+                "--account-id", account["id"], "--email", account["email"],
+                "--server", account["server"], "--dns", "cloudflare",
                 "--dns.resolvers", "1.1.1.1:53,1.0.0.1:53",
                 "--dns.propagation.disable-rns",
-                "--accept-tos", "--key-type", "RSA2048",
+                "--accept-tos", "--key-type", account["key_type"],
                 "--cert.name", certificate_id,
             ]
             if csr_pem is None:
@@ -292,6 +298,7 @@ class ExternalACME:
                     raise RuntimeError("Public ACME certificate and private key do not match")
             elif certificate.public_key().public_numbers() != csr.public_key().public_numbers():
                 raise RuntimeError("Public ACME certificate does not match the submitted CSR")
+            self._store_certificate_account(certificate_id, account)
             return PublicCertificate(certificate, certificate_pem, fullchain_pem, private_key)
         finally:
             self._remove_leaf_private_material(certificate_id)
@@ -301,31 +308,149 @@ class ExternalACME:
         certificate_id = str(certificate_id or "")
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", certificate_id):
             raise ValueError("Public certificate storage ID is invalid")
-        settings = self.settings()
         certificate_path = self.storage_path / "certificates" / (certificate_id + ".crt")
         if not certificate_path.is_file():
             raise ValueError(
                 "This public certificate predates managed revocation. Issue a replacement "
                 "with the current IoT CA release, then retire the older certificate."
             )
-        command = [
-            self.binary, "certificates", "revoke", "--path", str(self.storage_path),
-            "--email", settings["email"], "--server", settings["directory_url"],
-            "--key-type", "RSA2048", "--cert.name", certificate_id,
-            "--reason", "0", "--keep",
-        ]
-        try:
-            completed = self.runner(
-                command, capture_output=True, text=True, timeout=120, check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("Public certificate revocation timed out") from exc
-        if completed.returncode:
-            detail = self._safe_error(completed.stderr or completed.stdout)
+        accounts = self._revocation_accounts(certificate_id, certificate_path)
+        if not accounts:
             raise RuntimeError(
-                "Public certificate revocation failed" +
-                (": " + detail if detail else "")
+                "Public certificate revocation failed: the retained issuing ACME "
+                "account could not be found. Issue a replacement before retiring "
+                "this certificate."
             )
+        failures = []
+        for account in accounts:
+            command = [
+                self.binary, "certificates", "revoke", "--path",
+                str(self.storage_path), "--account-id", account["id"],
+                "--email", account["email"], "--server", account["server"],
+                "--key-type", account["key_type"], "--cert.name",
+                certificate_id, "--reason", "0", "--keep",
+            ]
+            try:
+                completed = self.runner(
+                    command, capture_output=True, text=True, timeout=120,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                failures.append("request timed out")
+                continue
+            if not completed.returncode:
+                self._store_certificate_account(certificate_id, account)
+                return
+            detail = self._safe_error(completed.stderr or completed.stdout)
+            failures.append(detail or "lego returned no error detail")
+        raise RuntimeError(
+            "Public certificate revocation failed using the retained issuing "
+            "ACME account" + (": " + failures[-1] if failures else "")
+        )
+
+    def _account_for_issue(self, settings):
+        configured = {
+            "id": settings["email"],
+            "email": settings["email"],
+            "server": settings["directory_url"],
+            "key_type": "RSA2048",
+        }
+        for account in self._registered_accounts():
+            if (
+                self._same_server(account["server"], configured["server"]) and
+                (account["id"] == configured["id"] or
+                 account["email"] == configured["email"])
+            ):
+                return account
+        return configured
+
+    def _revocation_accounts(self, certificate_id, certificate_path):
+        accounts = self._registered_accounts()
+        if not accounts:
+            return []
+        retained = self._load_certificate_account(certificate_id)
+        settings = self.settings()
+        try:
+            certificate = x509.load_pem_x509_certificate(
+                self._first_certificate_pem(certificate_path.read_bytes())
+            )
+            certificate_is_staging = "STAGING" in certificate.issuer.rfc4514_string().upper()
+            environment_matches = [
+                account for account in accounts
+                if ("staging" in account["server"].lower()) == certificate_is_staging
+            ]
+            if environment_matches:
+                accounts = environment_matches
+        except (OSError, RuntimeError, ValueError):
+            pass
+
+        def score(account):
+            retained_match = bool(retained) and all(
+                account.get(field) == retained.get(field)
+                for field in ("id", "server", "key_type")
+            )
+            configured_match = (
+                self._same_server(account["server"], settings["directory_url"]) and
+                (account["id"] == settings["email"] or
+                 account["email"] == settings["email"])
+            )
+            return (int(retained_match), int(configured_match))
+
+        return sorted(accounts, key=score, reverse=True)
+
+    def _registered_accounts(self):
+        result = []
+        accounts_root = self.storage_path / "accounts"
+        if not accounts_root.is_dir():
+            return result
+        for account_path in accounts_root.glob("*/*/account.json"):
+            try:
+                account = json.loads(account_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            registration = account.get("registration")
+            account_id = str(account.get("id") or account_path.parent.name)
+            key_type = str(account.get("keyType") or "").upper()
+            key_path = account_path.parent / (account_id + ".key")
+            if (
+                not isinstance(registration, dict) or not registration or
+                not key_path.is_file() or key_type not in ACCOUNT_KEY_TYPES
+            ):
+                continue
+            server = str(account.get("server") or "").strip()
+            if not server:
+                continue
+            result.append({
+                "id": account_id,
+                "email": str(account.get("email") or "").strip().lower(),
+                "server": server,
+                "key_type": key_type,
+            })
+        return result
+
+    def _store_certificate_account(self, certificate_id, account):
+        path = self.certificate_accounts_path / (certificate_id + ".json")
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(account, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+
+    def _load_certificate_account(self, certificate_id):
+        try:
+            value = json.loads(
+                (self.certificate_accounts_path / (certificate_id + ".json"))
+                .read_text(encoding="utf-8")
+            )
+            return value if isinstance(value, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def _same_server(first, second):
+        return str(first).rstrip("/") == str(second).rstrip("/")
 
     @staticmethod
     def _validate_names(names, zone):
