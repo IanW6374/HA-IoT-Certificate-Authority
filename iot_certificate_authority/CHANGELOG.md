@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.11
+
 - Place certificate totals above the action panel and label the temporary
   automatic enrollment control **Enable for 5 minutes**.
 - Keep the issuing-service and ACME-directory URLs on Settings, with accessible
