@@ -31,6 +31,25 @@
     <article class="action-card"><h3>Public certificates and IoT CA enrollment</h3><p>Enable public ACME issuance before using public certificate and IoT CA enrollment actions.</p><a class="button primary" href="{{ url_for('settings') }}">Configure public ACME</a></article>
     {% endif %}
   </div>
+  <div class="action-subsection">
+    <div class="section-head"><div><p class="eyebrow">Trust and connectivity</p><h3>Certificate downloads and service endpoints</h3></div></div>
+    <div class="action-support-grid">
+      <article class="support-card">
+        <h3>CA trust downloads</h3>
+        <p>Install the root trust anchor on clients, or use the full CA chain when a service expects the issuing intermediate and root together. No private keys are included.</p>
+        <div class="download-group"><strong>Root certificate</strong><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">DER</a></div></div>
+        <div class="download-group"><strong>Full CA chain</strong><div class="actions"><a class="button" href="{{ url_for('ca_fullchain_pem') }}">PEM</a><a class="button secondary" href="{{ url_for('ca_fullchain_pkcs7') }}">PKCS#7 DER</a></div></div>
+      </article>
+      <article class="support-card">
+        <h3>Service endpoints</h3>
+        <p>Copy these exact addresses into clients that use the private issuing or ACME services.</p>
+        <div class="endpoint-list">
+          <div><strong>Issuing service</strong><div class="copy-field"><code id="issuing-service" class="wrap">{{ settings.public_ca_url }}</code><button type="button" class="icon-button" data-copy-target="#issuing-service" aria-label="Copy issuing service URL" title="Copy issuing service URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></div>
+          <div><strong>ACME directory</strong><div class="copy-field"><code id="acme-directory" class="wrap">{{ settings.acme_directory }}</code><button type="button" class="icon-button" data-copy-target="#acme-directory" aria-label="Copy ACME directory URL" title="Copy ACME directory URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></div>
+        </div>
+      </article>
+    </div>
+  </div>
 </section>
 <section class="panel">
   <div class="section-head"><div><p class="eyebrow">Inventory</p><h2>Recent certificates</h2></div><a href="{{ url_for('certificates') }}">View all</a></div>
@@ -40,5 +59,4 @@
   </tbody></table></div>
   {% else %}<div class="empty"><p>No certificates have been issued.</p><a class="button" href="{{ url_for('new_certificate', profile='iot_md') }}">Issue the first one</a></div>{% endif %}
 </section>
-<section class="panel"><p class="eyebrow">Trust</p><h2>Root certificate</h2><p>Install this public certificate in devices and clients that should trust identities issued here.</p><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">Download PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">Download DER</a></div></section>
 {% endblock %}

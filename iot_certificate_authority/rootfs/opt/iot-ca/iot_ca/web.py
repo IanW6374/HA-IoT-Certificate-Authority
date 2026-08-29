@@ -173,6 +173,48 @@ def create_app(*, data_root=None, service=None):
                 form=request.form,
             ), 400
 
+    @app.route("/certificates/<certificate_id>/reissue", methods=["GET", "POST"])
+    def reissue_certificate(certificate_id):
+        _require_initialized(certificate_service)
+        certificate = certificate_service.certificate(certificate_id)
+        if not certificate:
+            abort(404)
+        try:
+            defaults = certificate_service.reissue_defaults(certificate_id)
+        except Exception as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("certificate_detail", certificate_id=certificate_id))
+        if request.method == "GET":
+            return render_template(
+                "new_certificate.html",
+                selected_profile=defaults["profile"],
+                form=defaults,
+                replacement=certificate,
+            )
+        try:
+            new_id, token = certificate_service.reissue(
+                certificate_id,
+                profile_slug=request.form.get("profile", ""),
+                common_name=request.form.get("common_name", ""),
+                sans=request.form.get("sans", ""),
+                key_type=request.form.get("key_type", ""),
+                validity_days=request.form.get("validity_days", ""),
+                export_format=request.form.get("export_format", ""),
+                export_password=request.form.get("export_password", ""),
+            )
+            session["pending_export_token"] = token
+            session["pending_export_kind"] = "certificate"
+            session["new_certificate_id"] = new_id
+            return redirect(url_for("export_ready"))
+        except Exception as exc:
+            flash(str(exc), "error")
+            return render_template(
+                "new_certificate.html",
+                selected_profile=request.form.get("profile", defaults["profile"]),
+                form=request.form,
+                replacement=certificate,
+            ), 400
+
     @app.route("/public-certificates/new", methods=["GET", "POST"])
     def new_public_certificate():
         _require_initialized(certificate_service)
@@ -423,9 +465,22 @@ def create_app(*, data_root=None, service=None):
     def ca_chain_pem():
         _require_initialized(certificate_service)
         return _memory_download(
-            certificate_service.ca_chain(),
-            "iot-ca-chain.pem",
+            certificate_service.ca_chain("pem"),
+            "iot-ca-fullchain.pem",
             "application/x-pem-file",
+        )
+
+    @app.get("/trust/fullchain.pem")
+    def ca_fullchain_pem():
+        return ca_chain_pem()
+
+    @app.get("/trust/fullchain.p7b")
+    def ca_fullchain_pkcs7():
+        _require_initialized(certificate_service)
+        return _memory_download(
+            certificate_service.ca_chain("pkcs7"),
+            "iot-ca-fullchain.p7b",
+            "application/pkcs7-mime",
         )
 
     @app.get("/audit")

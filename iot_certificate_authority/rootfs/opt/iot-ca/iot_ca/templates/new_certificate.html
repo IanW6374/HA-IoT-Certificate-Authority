@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Issue certificate · IoT Certificate Authority{% endblock %}
+{% block title %}{{ 'Edit and reissue' if replacement else 'Issue' }} certificate · IoT Certificate Authority{% endblock %}
 {% block content %}
-<section class="hero narrow"><p class="eyebrow">New identity</p><h1>Issue a certificate</h1><p>The private key is generated for this request and deleted after the one-time download expires or is consumed.</p></section>
-<form class="panel form-grid narrow" method="post" id="certificate-form">
+<section class="hero narrow"><p class="eyebrow">{{ 'Certificate lifecycle' if replacement else 'New identity' }}</p><h1>{{ 'Edit and reissue certificate' if replacement else 'Issue a certificate' }}</h1><p>{% if replacement %}The existing identity and SANs are pre-populated below. Edit the required fields, then issue a replacement with a new private key.{% else %}The private key is generated for this request and deleted after the one-time download expires or is consumed.{% endif %}</p></section>
+<form class="panel form-grid narrow" method="post" id="certificate-form" data-initial-key="{{ form.key_type if form else '' }}" data-initial-export="{{ form.export_format if form else '' }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>Certificate profile<select name="profile" id="profile">
   {% for slug, profile in profiles.items() if slug != 'public-portal' %}<option value="{{ slug }}" data-description="{{ profile.description }}" data-default-days="{{ profile.default_days }}" data-key-types="{{ profile.key_types|join(',') }}" data-default-key="{{ profile.default_key_type }}" data-exports="{{ profile.export_formats|join(',') }}" {{ 'selected' if slug == selected_profile else '' }}>{{ profile.name }}</option>{% endfor %}
@@ -13,6 +13,6 @@
   <label>Export format<select name="export_format" id="export-format"></select></label>
   <label id="export-password-field" hidden>PKCS#12 password<input name="export_password" type="password" minlength="12" autocomplete="new-password"><span class="help">Required only for PKCS#12. This password is not stored.</span></label>
   <div class="warning"><strong>One-time secret</strong><p>If the downloaded private key is lost, it cannot be recovered. Reissue the certificate with a new key instead.</p></div>
-  <button type="submit">Issue and prepare export</button>
+  <button type="submit">{{ 'Reissue and prepare export' if replacement else 'Issue and prepare export' }}</button>
 </form>
 {% endblock %}

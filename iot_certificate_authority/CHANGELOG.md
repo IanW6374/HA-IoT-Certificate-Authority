@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.12
+
+- Consolidate root/full-chain trust downloads and copyable service endpoints
+  within Certificate actions, with PEM, DER and PKCS#7 DER choices as
+  appropriate, and remove duplicate controls from Settings.
+- Add editable private and public certificate reissue workflows pre-populated
+  with the existing identity and Subject Alternative Names.
 
 ## 0.4.11
 

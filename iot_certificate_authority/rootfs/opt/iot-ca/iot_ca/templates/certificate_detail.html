@@ -17,7 +17,7 @@
 {% if certificate.status == 'active' and certificate.source != 'external-acme' %}
 <section class="grid two">
   {% if certificate.source != 'acme' %}
-  <form class="panel form-grid" method="post" action="{{ url_for('renew_certificate', certificate_id=certificate.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Reissue with a new key</h2><p>Creates a replacement certificate and passively revokes this serial.</p><label>Export format<select name="export_format">{% for format in profiles[certificate.profile].export_formats %}<option value="{{ format }}">{% if format == 'iot_md' %}IoT MD{% else %}{{ format|upper }}{% endif %}</option>{% endfor %}</select></label><label>PKCS#12 password, if selected<input name="export_password" type="password" minlength="12" autocomplete="new-password"></label><button type="submit">Reissue certificate</button></form>
+  <article class="panel"><h2>Edit and reissue</h2><p>Open the existing identity and SANs for editing, then issue a replacement with a new private key. The current serial is superseded after successful issuance.</p><a class="button" href="{{ url_for('reissue_certificate', certificate_id=certificate.id) }}">Edit and reissue certificate</a></article>
   {% else %}
   <article class="panel"><h2>Automatic renewal</h2><p>This certificate is managed by its ACME client. A replacement will be linked here automatically when the client renews it.</p></article>
   {% endif %}
@@ -26,7 +26,7 @@
 {% endif %}
 {% if certificate.status == 'active' and certificate.source == 'external-acme' %}
 <section class="grid two">
-  <article class="panel"><h2>Public portal lifecycle</h2><p>The portal private key was removed after the one-time export. Issue a replacement before expiry when rotating this identity.</p><a class="button" href="{{ url_for('new_public_certificate', replace=certificate.id) }}">Issue replacement</a></article>
+  <article class="panel"><h2>Public portal lifecycle</h2><p>The portal private key was removed after the one-time export. Edit the existing SANs and reissue before expiry when rotating this identity.</p><a class="button" href="{{ url_for('new_public_certificate', replace=certificate.id) }}">Edit and reissue certificate</a></article>
   {% if certificate.provisioner == 'letsencrypt-cloudflare-dns01-account-v1' %}
   <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this public certificate with its ACME issuer? Deployed portals must install a replacement."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke public certificate</h2><p>Requests revocation from the public ACME issuer using the retained ACME account identity. The portal private key is not retained.</p><button class="danger" type="submit">Revoke public certificate</button></form>
   {% else %}

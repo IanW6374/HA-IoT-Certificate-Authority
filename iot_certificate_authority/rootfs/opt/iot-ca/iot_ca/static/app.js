@@ -141,6 +141,8 @@
   const validity = document.getElementById("validity-days");
   const exportFormat = document.getElementById("export-format");
   const passwordField = document.getElementById("export-password-field");
+  const initialKeyType = form.dataset.initialKey || "";
+  const initialExportFormat = form.dataset.initialExport || "";
 
   function fill(select, values, selected) {
     const current = select.value;
@@ -154,10 +156,19 @@
     });
   }
 
-  function updateProfile() {
+  function updateProfile(useInitialValues = false) {
     const selected = profile.selectedOptions[0];
-    fill(keyType, selected.dataset.keyTypes.split(","), selected.dataset.defaultKey);
-    fill(exportFormat, selected.dataset.exports.split(","), selected.dataset.exports.split(",")[0]);
+    fill(
+      keyType,
+      selected.dataset.keyTypes.split(","),
+      useInitialValues && initialKeyType ? initialKeyType : selected.dataset.defaultKey,
+    );
+    fill(
+      exportFormat,
+      selected.dataset.exports.split(","),
+      useInitialValues && initialExportFormat
+        ? initialExportFormat : selected.dataset.exports.split(",")[0],
+    );
     if (!validity.value) validity.value = selected.dataset.defaultDays;
     document.getElementById("profile-description").textContent = selected.dataset.description;
     updateExport();
@@ -170,8 +181,8 @@
 
   profile.addEventListener("change", () => {
     validity.value = "";
-    updateProfile();
+    updateProfile(false);
   });
   exportFormat.addEventListener("change", updateExport);
-  updateProfile();
+  updateProfile(true);
 })();

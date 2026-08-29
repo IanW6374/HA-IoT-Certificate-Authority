@@ -2,10 +2,7 @@
 {% block title %}Settings · IoT Certificate Authority{% endblock %}
 {% block content %}
 <section class="hero"><p class="eyebrow">Authority configuration</p><h1>{{ settings.ca_name }}</h1><p>Configuration is read-only in the first release to keep CA identity changes explicit and auditable.</p></section>
-<section class="grid two">
-<article class="panel detail-list"><h2>Identity policy</h2><dl><dt>CA DNS name</dt><dd>{{ settings.ca_dns }}</dd><dt>Allowed DNS suffix</dt><dd>{{ settings.allowed_dns_suffix }}</dd><dt>Public SANs</dt><dd>{{ 'Allowed' if settings.allow_public_sans else 'Denied' }}</dd><dt>Initialized</dt><dd>{{ settings.initialized_at }}</dd></dl></article>
-<article class="panel detail-list"><h2>Services</h2><dl><dt>Engine status</dt><dd><span class="status {{ 'good' if ca_health.online else 'bad' }}">{{ 'Online' if ca_health.online else 'Offline' }}</span></dd><dt>Issuing service</dt><dd><div class="copy-field"><code id="issuing-service" class="wrap">{{ settings.public_ca_url }}</code><button type="button" class="icon-button" data-copy-target="#issuing-service" aria-label="Copy issuing service URL" title="Copy issuing service URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></dd><dt>ACME directory</dt><dd><div class="copy-field"><code id="acme-directory" class="wrap">{{ settings.acme_directory }}</code><button type="button" class="icon-button" data-copy-target="#acme-directory" aria-label="Copy ACME directory URL" title="Copy ACME directory URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></dd></dl></article>
-</section>
+<section class="panel detail-list"><h2>Identity policy</h2><dl><dt>CA DNS name</dt><dd>{{ settings.ca_dns }}</dd><dt>Allowed DNS suffix</dt><dd>{{ settings.allowed_dns_suffix }}</dd><dt>Public SANs</dt><dd>{{ 'Allowed' if settings.allow_public_sans else 'Denied' }}</dd><dt>Initialized</dt><dd>{{ settings.initialized_at }}</dd></dl></section>
 <section class="panel">
   <div class="section-head"><div><p class="eyebrow">Network</p><h2>LAN service endpoints</h2></div></div>
   <p>Set these to the externally reachable Home Assistant host ports. The add-on’s internal listeners remain TCP 9000 and 9010; configure matching host-port mappings in the add-on Network settings.</p>
@@ -31,16 +28,5 @@
     <div class="warning"><strong>Public DNS and Certificate Transparency</strong><p>Requested public hostnames can become publicly discoverable. The Cloudflare token is stored mode 0600, passed by file reference, and never included in certificate exports or audit details.</p></div>
     <button type="submit">Save public ACME settings</button>
   </form>
-</section>
-<section class="panel">
-  <h2>Public CA certificates</h2>
-  <p>The root is the trust anchor to install on clients. The intermediate is the online issuing CA. Use the CA chain PEM when an application expects both certificates in one file. None of these downloads contains private key material.</p>
-  <div class="actions">
-    <a class="button" href="{{ url_for('root_pem') }}">Root PEM</a>
-    <a class="button secondary" href="{{ url_for('root_der') }}">Root DER</a>
-    <a class="button secondary" href="{{ url_for('intermediate_pem') }}">Intermediate PEM</a>
-    <a class="button secondary" href="{{ url_for('intermediate_der') }}">Intermediate DER</a>
-    <a class="button secondary" href="{{ url_for('ca_chain_pem') }}">CA chain PEM</a>
-  </div>
 </section>
 {% endblock %}

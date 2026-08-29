@@ -18,7 +18,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
-from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.hazmat.primitives.serialization import pkcs12, pkcs7
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from .database import Inventory, utc_now
@@ -824,24 +824,26 @@ class CertificateService:
             )
             raise
 
-    def renew(self, certificate_id: str, *, export_format: str, export_password: str = ""):
+    def reissue(
+        self, certificate_id: str, *, profile_slug: str, common_name: str,
+        sans, key_type: str, validity_days: int, export_format: str,
+        export_password: str = "",
+    ):
         original = self.inventory.certificate(certificate_id)
         if not original:
             raise ValueError("Certificate not found")
         if original["status"] != "active":
-            raise ValueError("Only active certificates can be renewed")
-        renewal_sans = original["sans"]
-        if (
-            not PROFILES[original["profile"]].require_san
-            and renewal_sans == [original["common_name"]]
-        ):
-            renewal_sans = []
+            raise ValueError("Only active certificates can be reissued")
+        if original.get("source") != "manual":
+            raise ValueError("Only manually issued private certificates can be edited and reissued")
+        if profile_slug == "public-portal":
+            raise ValueError("Use the public portal reissue workflow for external ACME")
         new_id, token = self.issue(
-            profile_slug=original["profile"],
-            common_name=original["common_name"],
-            sans=renewal_sans,
-            key_type=original["key_type"],
-            validity_days=original["validity_days"],
+            profile_slug=profile_slug,
+            common_name=common_name,
+            sans=sans,
+            key_type=key_type,
+            validity_days=validity_days,
             export_format=export_format,
             export_password=export_password,
             renewed_from=certificate_id,
@@ -867,6 +869,50 @@ class CertificateService:
                 f"Replacement {new_id} was issued, but the old certificate could not be revoked: {exc}"
             ) from exc
         return new_id, token
+
+    def renew(self, certificate_id: str, *, export_format: str, export_password: str = ""):
+        original = self.inventory.certificate(certificate_id)
+        if not original:
+            raise ValueError("Certificate not found")
+        renewal_sans = original["sans"]
+        if (
+            not PROFILES[original["profile"]].require_san
+            and renewal_sans == [original["common_name"]]
+        ):
+            renewal_sans = []
+        return self.reissue(
+            certificate_id,
+            profile_slug=original["profile"],
+            common_name=original["common_name"],
+            sans=renewal_sans,
+            key_type=original["key_type"],
+            validity_days=original["validity_days"],
+            export_format=export_format,
+            export_password=export_password,
+        )
+
+    def reissue_defaults(self, certificate_id):
+        certificate = self.certificate(certificate_id)
+        if not certificate:
+            raise ValueError("Certificate not found")
+        if certificate["status"] != "active":
+            raise ValueError("Only active certificates can be reissued")
+        if certificate.get("source") != "manual":
+            raise ValueError("Only manually issued private certificates can be edited and reissued")
+        sans = certificate.get("sans", [])
+        if (
+            not PROFILES[certificate["profile"]].require_san and
+            sans == [certificate["common_name"]]
+        ):
+            sans = []
+        return {
+            "profile": certificate["profile"],
+            "common_name": certificate["common_name"],
+            "sans": "\n".join(sans),
+            "key_type": certificate["key_type"],
+            "validity_days": certificate["validity_days"],
+            "export_format": PROFILES[certificate["profile"]].export_formats[0],
+        }
 
     def revoke(self, certificate_id: str):
         certificate = self.inventory.certificate(certificate_id)
@@ -968,8 +1014,21 @@ class CertificateService:
         certificate = x509.load_pem_x509_certificate(self.engine.intermediate_certificate())
         return certificate.public_bytes(self._public_certificate_encoding(encoding))
 
-    def ca_chain(self):
-        return self.intermediate_trust("pem") + self.root_trust("pem")
+    def ca_chain(self, encoding="pem"):
+        intermediate = x509.load_pem_x509_certificate(
+            self.engine.intermediate_certificate()
+        )
+        root = x509.load_pem_x509_certificate(self.engine.root_certificate())
+        if encoding == "pem":
+            return (
+                intermediate.public_bytes(serialization.Encoding.PEM) +
+                root.public_bytes(serialization.Encoding.PEM)
+            )
+        if encoding in {"der", "pkcs7"}:
+            return pkcs7.serialize_certificates(
+                [intermediate, root], serialization.Encoding.DER
+            )
+        raise ValueError("Certificate chain format must be PEM or PKCS#7 DER")
 
     def export_for_token(self, token: str):
         self.cleanup_exports()

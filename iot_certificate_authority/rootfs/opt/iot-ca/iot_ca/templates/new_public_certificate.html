@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Replace' if replacement else 'Issue' }} public portal certificate · IoT Certificate Authority{% endblock %}
+{% block title %}{{ 'Edit and reissue' if replacement else 'Issue' }} public portal certificate · IoT Certificate Authority{% endblock %}
 {% block content %}
-<section class="hero narrow"><p class="eyebrow">External ACME · Cloudflare DNS-01</p><h1>{{ 'Replace' if replacement else 'Issue' }} a public portal certificate</h1><p>{% if replacement %}The existing identity details are pre-populated below. Review them before requesting the replacement.{% else %}Let’s Encrypt validates DNS through Cloudflare. The portal private key is deleted from the CA after the one-time export is consumed or expires.{% endif %}</p></section>
+<section class="hero narrow"><p class="eyebrow">External ACME · Cloudflare DNS-01</p><h1>{{ 'Edit and reissue' if replacement else 'Issue' }} a public portal certificate</h1><p>{% if replacement %}The existing identity and additional SANs are pre-populated below. Edit them before requesting the replacement.{% else %}Let’s Encrypt validates DNS through Cloudflare. The portal private key is deleted from the CA after the one-time export is consumed or expires.{% endif %}</p></section>
 <form id="public-certificate-form" class="panel form-grid narrow" method="post" action="{{ url_for('new_public_certificate') }}" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   {% if replacement %}<input type="hidden" name="replaces" value="{{ replacement.id }}">{% endif %}
@@ -10,6 +10,6 @@
   <label>Private Device API/fleet hostname<input id="public-api-hostname" name="api_hostname" required maxlength="253" value="{{ form.api_hostname if form else '' }}" placeholder="e.g. device.local" pattern="[A-Za-z0-9-]+[.]local" aria-describedby="public-api-hostname-help"><span id="public-api-hostname-help" class="help">This is filled from the portal host unless you enter a different single-label <code>.local</code> name.</span></label>
   <label>Additional portal DNS names<textarea name="sans" rows="3" placeholder="device-alias.{{ external.zone }}">{{ form.sans if form else '' }}</textarea><span class="help">Optional; enter complete DNS names, one per line or comma-separated. All names must be within {{ external.zone }}.</span></label>
   <div class="warning"><strong>Split identities</strong><p>The package contains a public <code>web.crt.pem</code> leaf/intermediate chain and <code>web.key.der</code>, plus separate private-CA <code>api-server.*</code> files and private trust anchors. The initial IoT MD wizard installs each file only for its stated purpose.</p></div>
-  <button id="prepare-public-certificate" type="submit">Validate DNS and prepare {{ 'replacement' if replacement else 'export' }}</button>
+  <button id="prepare-public-certificate" type="submit">Validate DNS and prepare {{ 'reissue' if replacement else 'export' }}</button>
 </form>
 {% endblock %}

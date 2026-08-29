@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.serialization import pkcs7
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
@@ -83,6 +84,40 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(self.engine.revoked)
         self.assertIsNotNone(self.service.export_for_token(token))
 
+    def test_editable_reissue_replaces_identity_and_sans(self):
+        old_id, _ = self.service.issue(
+            profile_slug="tls-server",
+            common_name="service.home.arpa",
+            sans="service.home.arpa,old.home.arpa",
+            key_type="ec-p256",
+            validity_days=90,
+            export_format="pem",
+        )
+        defaults = self.service.reissue_defaults(old_id)
+        self.assertEqual(defaults["common_name"], "service.home.arpa")
+        self.assertEqual(
+            defaults["sans"], "service.home.arpa\nold.home.arpa"
+        )
+
+        new_id, _ = self.service.reissue(
+            old_id,
+            profile_slug="tls-server",
+            common_name="service.home.arpa",
+            sans="service.home.arpa,new.home.arpa",
+            key_type="rsa-2048",
+            validity_days=180,
+            export_format="pem",
+        )
+
+        self.assertEqual(self.service.certificate(old_id)["status"], "superseded")
+        replacement = self.service.certificate(new_id)
+        self.assertEqual(replacement["renewed_from"], old_id)
+        self.assertEqual(
+            replacement["sans"], ["service.home.arpa", "new.home.arpa"]
+        )
+        self.assertEqual(replacement["key_type"], "rsa-2048")
+        self.assertEqual(replacement["validity_days"], 180)
+
     def test_public_ca_downloads_include_root_and_intermediate(self):
         root = x509.load_pem_x509_certificate(self.service.root_trust())
         intermediate = x509.load_pem_x509_certificate(self.service.intermediate_trust())
@@ -98,6 +133,10 @@ class ServiceTests(unittest.TestCase):
         )
         self.assertEqual(chain.count(b"-----BEGIN CERTIFICATE-----"), 2)
         self.assertEqual(chain, self.service.intermediate_trust() + self.service.root_trust())
+        chain_der = pkcs7.load_der_pkcs7_certificates(
+            self.service.ca_chain("pkcs7")
+        )
+        self.assertEqual(len(chain_der), 2)
 
     def test_existing_certificate_exports_use_requested_encoding(self):
         certificate_id, _ = self.service.issue(

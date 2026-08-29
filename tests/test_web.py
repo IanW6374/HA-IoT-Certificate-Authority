@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from cryptography import x509
+from cryptography.hazmat.primitives.serialization import pkcs7
 
 from iot_ca.service import CertificateService
 from iot_ca.web import create_app
@@ -193,8 +194,11 @@ class WebTests(unittest.TestCase):
             export_format="iot_md",
         )
         detail = self.client.get("/certificates/" + certificate_id)
-        self.assertIn(b">IoT MD<", detail.data)
-        self.assertNotIn(b"IOT" + b"_MD", detail.data)
+        reissue = self.client.get(
+            "/certificates/" + certificate_id + "/reissue"
+        )
+        self.assertIn(b">IoT MD device portal<", reissue.data)
+        self.assertNotIn(b"IOT" + b"_MD", reissue.data)
 
         script = (
             Path(__file__).parents[1]
@@ -236,19 +240,34 @@ class WebTests(unittest.TestCase):
         self.assertIn(revoked_id.encode(), all_listing.data)
 
     def test_public_ca_certificate_downloads(self):
+        dashboard = self.client.get("/")
+        self.assertIn(b"CA trust downloads", dashboard.data)
+        self.assertIn(b"Root certificate", dashboard.data)
+        self.assertIn(b"Full CA chain", dashboard.data)
+        self.assertIn(b"PKCS#7 DER", dashboard.data)
+
         settings = self.client.get("/settings")
-        self.assertIn(b"Intermediate PEM", settings.data)
-        self.assertIn(b"CA chain PEM", settings.data)
+        self.assertNotIn(b"Public CA certificates", settings.data)
+        self.assertNotIn(b"Root PEM", settings.data)
 
         intermediate = self.client.get("/trust/intermediate.pem")
         self.assertEqual(intermediate.status_code, 200)
         self.assertIn(b"iot-ca-intermediate.pem", intermediate.headers["Content-Disposition"].encode())
         self.assertEqual(intermediate.data.count(b"-----BEGIN CERTIFICATE-----"), 1)
 
-        chain = self.client.get("/trust/chain.pem")
+        chain = self.client.get("/trust/fullchain.pem")
         self.assertEqual(chain.status_code, 200)
-        self.assertIn(b"iot-ca-chain.pem", chain.headers["Content-Disposition"].encode())
+        self.assertIn(b"iot-ca-fullchain.pem", chain.headers["Content-Disposition"].encode())
         self.assertEqual(chain.data.count(b"-----BEGIN CERTIFICATE-----"), 2)
+
+        chain_der = self.client.get("/trust/fullchain.p7b")
+        self.assertEqual(chain_der.status_code, 200)
+        self.assertEqual(chain_der.mimetype, "application/pkcs7-mime")
+        self.assertIn(
+            b"iot-ca-fullchain.p7b",
+            chain_der.headers["Content-Disposition"].encode(),
+        )
+        self.assertEqual(len(pkcs7.load_der_pkcs7_certificates(chain_der.data)), 2)
 
         root_der = self.client.get("/trust/root.der")
         self.assertEqual(root_der.status_code, 200)
@@ -257,19 +276,66 @@ class WebTests(unittest.TestCase):
 
     def test_acme_url_has_copy_controls(self):
         dashboard = self.client.get("/")
-        self.assertNotIn(b"Service endpoints", dashboard.data)
-        self.assertNotIn(b'data-copy-target="#issuing-service"', dashboard.data)
-        self.assertNotIn(b'data-copy-target="#acme-directory"', dashboard.data)
-        self.assertNotIn(b"<p>Issuing service:", dashboard.data)
-
-        settings = self.client.get("/settings")
+        self.assertIn(b"Service endpoints", dashboard.data)
         for target, label in (
             (b"#issuing-service", b"Copy issuing service URL"),
             (b"#acme-directory", b"Copy ACME directory URL"),
         ):
-            self.assertIn(b'data-copy-target="' + target + b'"', settings.data)
-            self.assertIn(b'aria-label="' + label + b'"', settings.data)
-        self.assertGreaterEqual(settings.data.count(b'class="copy-icon"'), 2)
+            self.assertIn(b'data-copy-target="' + target + b'"', dashboard.data)
+            self.assertIn(b'aria-label="' + label + b'"', dashboard.data)
+        self.assertGreaterEqual(dashboard.data.count(b'class="copy-icon"'), 2)
+
+        settings = self.client.get("/settings")
+        self.assertNotIn(b'data-copy-target="#issuing-service"', settings.data)
+        self.assertNotIn(b'data-copy-target="#acme-directory"', settings.data)
+
+    def test_private_certificate_edit_and_reissue_form_is_prepopulated(self):
+        certificate_id, _ = self.service.issue(
+            profile_slug="tls-server",
+            common_name="service.home.arpa",
+            sans="service.home.arpa,old.home.arpa",
+            key_type="ec-p256",
+            validity_days=90,
+            export_format="pem",
+        )
+        detail = self.client.get("/certificates/" + certificate_id)
+        self.assertIn(b"Edit and reissue certificate", detail.data)
+
+        form = self.client.get(
+            "/certificates/" + certificate_id + "/reissue"
+        )
+        self.assertEqual(form.status_code, 200)
+        self.assertIn(b"Edit and reissue certificate", form.data)
+        self.assertIn(b'value="service.home.arpa"', form.data)
+        self.assertIn(b"service.home.arpa\nold.home.arpa</textarea>", form.data)
+        self.assertIn(b'data-initial-key="ec-p256"', form.data)
+        self.assertIn(b'value="90"', form.data)
+
+        issued = self.client.post(
+            "/certificates/" + certificate_id + "/reissue",
+            data={
+                "csrf_token": self.csrf(),
+                "profile": "tls-server",
+                "common_name": "service.home.arpa",
+                "sans": "service.home.arpa,new.home.arpa",
+                "key_type": "rsa-2048",
+                "validity_days": "180",
+                "export_format": "pem",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(issued.status_code, 200)
+        self.assertIn(b"Certificate package is ready", issued.data)
+        self.assertEqual(
+            self.service.certificate(certificate_id)["status"], "superseded"
+        )
+        replacement = next(
+            item for item in self.service.certificates()
+            if item.get("renewed_from") == certificate_id
+        )
+        self.assertEqual(
+            replacement["sans"], ["service.home.arpa", "new.home.arpa"]
+        )
 
     def test_primary_navigation_targets_distinct_pages_and_marks_current_tab(self):
         expected = {
@@ -324,8 +390,9 @@ class WebTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertIn(b"IoT CA service ports saved", saved.data)
-        self.assertIn(b"https://iot-ca.home.arpa:9443", saved.data)
         self.assertIn(b'value="9444"', saved.data)
+        dashboard = self.client.get("/")
+        self.assertIn(b"https://iot-ca.home.arpa:9443", dashboard.data)
 
     def test_public_portal_route_prepares_complete_profile_export(self):
         response = self.client.post(
@@ -377,7 +444,7 @@ class WebTests(unittest.TestCase):
             "/public-certificates/new?replace=" + certificate_id
         )
         self.assertEqual(replacement.status_code, 200)
-        self.assertIn(b"Replace a public portal certificate", replacement.data)
+        self.assertIn(b"Edit and reissue a public portal certificate", replacement.data)
         self.assertIn(b'name="portal_host"', replacement.data)
         self.assertIn(b'value="device"', replacement.data)
         self.assertIn(b'value="private-device.local"', replacement.data)
