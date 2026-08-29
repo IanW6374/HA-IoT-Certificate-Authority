@@ -161,7 +161,7 @@ workstation and select the named DER files in the IoT MD initial setup wizard.
 The Cloudflare token never goes to the IoT MD device.
 
 The manual ZIP remains available, but version 0.4 also provides automated,
-device-key-preserving provisioning. Choose **Create IoT CA enrollment file** on the
+device-key-preserving provisioning. Choose **Create enrollment authorization** on the
 dashboard, enter the public portal host label and download the one-time
 `.iotenroll` file. The file contains the exact public portal and private
 `<host>.local` identities, the private CA root, endpoint and a random bearer
@@ -179,7 +179,7 @@ closes automatically. The `.iotenroll` export remains the higher-assurance
 alternative when the setup LAN is not trusted.
 
 In the IoT MD first-boot wizard, the administrator may explicitly choose
-**Automatic IoT CA enrollment**, **IoT CA enrollment file (`.iotenroll`)**,
+**Automatic IoT CA enrollment**, **IoT CA enrollment authorization (`.iotenroll`)**,
 **Private CA ACME enrollment**, **Manual certificate package**, or
 **Self-signed certificate**. For either IoT CA enrollment method, the device
 generates independent P-256 portal, Device API and renewal keys locally and
@@ -262,7 +262,7 @@ The Settings page displays the ACME directory URL:
 https://iot-ca.home.arpa:9000/acme/acme/directory
 ```
 
-Use the copy icon beside the URL on the Overview or Settings page to copy the
+Use the copy icon beside the URL on the Settings page to copy the
 complete directory URL without selecting it manually.
 
 Before using it, the ACME client must:

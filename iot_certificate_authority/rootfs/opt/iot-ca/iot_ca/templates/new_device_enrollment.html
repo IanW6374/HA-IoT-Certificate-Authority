@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Create IoT CA enrollment file · IoT Certificate Authority{% endblock %}
+{% block title %}Create IoT CA enrollment authorization · IoT Certificate Authority{% endblock %}
 {% block content %}
-<section class="hero narrow"><p class="eyebrow">IoT CA enrollment file (<code>.iotenroll</code>)</p><h1>Create an IoT CA enrollment file</h1><p>The one-time, host-bound file lets one IoT MD device generate its keys locally and request only the identities shown below.</p></section>
+<section class="hero narrow"><p class="eyebrow">IoT CA enrollment authorization (<code>.iotenroll</code>)</p><h1>Create an enrollment authorization</h1><p>The one-time, host-bound file lets one IoT MD device generate its keys locally and request only the identities shown below.</p></section>
 <form class="panel form-grid narrow" method="post" action="{{ url_for('new_device_enrollment') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>Portal host<div class="dns-suffix-input"><input name="portal_host" required maxlength="63" value="{{ form.portal_host if form else '' }}" placeholder="e.g. whes02" pattern="(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])"><span>.{{ external.zone }}</span></div><span class="help">The device will also receive the private API identity <code>&lt;host&gt;.local</code>.</span></label>
   <div class="warning"><strong>Short-lived authorization</strong><p>The <code>.iotenroll</code> file expires after 30 minutes and can claim only this host. It contains a bearer token and public CA root, but no private key or Cloudflare credential.</p></div>
-  <button type="submit">Create IoT CA enrollment file</button>
+  <button type="submit">Create enrollment authorization</button>
 </form>
 {% endblock %}

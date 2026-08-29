@@ -7,30 +7,30 @@
 <section class="critical panel"><div><strong>Offline root export is awaiting confirmation</strong><p>Confirm that the downloaded archive and its passphrase are stored in separate offline locations.</p></div><form method="post" action="{{ url_for('recover_root_link') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Review root export</button></form></section>
 {% endif %}
 {% set external = settings.external_acme %}
+<section class="stats">
+  <article><span>Total</span><strong>{{ dashboard.counts.total }}</strong></article>
+  <article><span>Active</span><strong>{{ dashboard.counts.active }}</strong></article>
+  <article><span>Expiring in 30 days</span><strong>{{ dashboard.expiring|length }}</strong></article>
+  <article><span>CA engine</span><strong class="status {{ 'good' if dashboard.ca_health.online else 'bad' }}">{{ 'Online' if dashboard.ca_health.online else 'Offline' }}</strong></article>
+</section>
 <section class="panel action-panel">
   <div class="section-head"><div><p class="eyebrow">Operations</p><h2>Certificate actions</h2></div></div>
   <div class="action-grid">
     <article class="action-card"><h3>Private certificate</h3><p>Issue a private-CA identity for IoT MD or another TLS client or server.</p><a class="button primary" href="{{ url_for('new_certificate') }}">Issue private certificate</a></article>
     {% if external.enabled %}
     <article class="action-card"><h3>Public portal certificate</h3><p>Issue a browser-trusted portal identity using Cloudflare DNS-01.</p><a class="button primary" href="{{ url_for('new_public_certificate') }}">Issue public certificate</a></article>
-    <article class="action-card"><h3>IoT CA enrollment file (<code>.iotenroll</code>)</h3><p>Create a one-time, host-bound enrollment file for a single IoT MD device.</p><a class="button primary" href="{{ url_for('new_device_enrollment') }}">Create IoT CA enrollment file</a></article>
+    <article class="action-card"><h3>IoT CA enrollment authorization (<code>.iotenroll</code>)</h3><p>Create a one-time, host-bound enrollment authorization for a single IoT MD device.</p><a class="button primary" href="{{ url_for('new_device_enrollment') }}">Create enrollment authorization</a></article>
     <article class="action-card"><h3>Automatic IoT CA enrollment</h3><p>Temporarily allow trusted-LAN IoT MD devices to request host-bound enrollment.</p>
       {% if external.auto_enroll_enabled %}
       <form method="post" action="{{ url_for('close_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="secondary enrollment-button" type="submit">Enrollment open · <span data-enrollment-countdown data-until="{{ external.auto_enroll_until }}">{{ external.auto_enroll_remaining_seconds }}</span> · close</button></form>
       {% else %}
-      <form method="post" action="{{ url_for('open_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="primary" type="submit">Open for {{ external.auto_enroll_minutes }} minutes</button></form>
+      <form method="post" action="{{ url_for('open_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="primary" type="submit">Enable for {{ external.auto_enroll_minutes }} minutes</button></form>
       {% endif %}
     </article>
     {% else %}
     <article class="action-card"><h3>Public certificates and IoT CA enrollment</h3><p>Enable public ACME issuance before using public certificate and IoT CA enrollment actions.</p><a class="button primary" href="{{ url_for('settings') }}">Configure public ACME</a></article>
     {% endif %}
   </div>
-</section>
-<section class="stats">
-  <article><span>Total</span><strong>{{ dashboard.counts.total }}</strong></article>
-  <article><span>Active</span><strong>{{ dashboard.counts.active }}</strong></article>
-  <article><span>Expiring in 30 days</span><strong>{{ dashboard.expiring|length }}</strong></article>
-  <article><span>CA engine</span><strong class="status {{ 'good' if dashboard.ca_health.online else 'bad' }}">{{ 'Online' if dashboard.ca_health.online else 'Offline' }}</strong></article>
 </section>
 <section class="panel">
   <div class="section-head"><div><p class="eyebrow">Inventory</p><h2>Recent certificates</h2></div><a href="{{ url_for('certificates') }}">View all</a></div>
@@ -40,8 +40,5 @@
   </tbody></table></div>
   {% else %}<div class="empty"><p>No certificates have been issued.</p><a class="button" href="{{ url_for('new_certificate', profile='iot_md') }}">Issue the first one</a></div>{% endif %}
 </section>
-<section class="grid two">
-  <article class="panel"><p class="eyebrow">Trust</p><h2>Root certificate</h2><p>Install this public certificate in devices and clients that should trust identities issued here.</p><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">Download PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">Download DER</a></div></article>
-  <article class="panel"><p class="eyebrow">Automation</p><h2>Service endpoints</h2><div class="endpoint-list"><div><strong>Issuing service</strong><div class="copy-field"><code id="issuing-service" class="wrap">{{ settings.public_ca_url }}</code><button type="button" class="icon-button" data-copy-target="#issuing-service" aria-label="Copy issuing service URL" title="Copy issuing service URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></div><div><strong>ACME directory</strong><div class="copy-field"><code id="acme-directory" class="wrap">{{ settings.acme_directory }}</code><button type="button" class="icon-button" data-copy-target="#acme-directory" aria-label="Copy ACME directory URL" title="Copy ACME directory URL"><span class="copy-icon" aria-hidden="true"></span></button><span class="copy-status" aria-live="polite"></span></div></div></div><p class="muted">ACME clients must trust this CA root and resolve the CA DNS name. Issued certificates are imported into inventory automatically.</p></article>
-</section>
+<section class="panel"><p class="eyebrow">Trust</p><h2>Root certificate</h2><p>Install this public certificate in devices and clients that should trust identities issued here.</p><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">Download PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">Download DER</a></div></section>
 {% endblock %}

@@ -36,11 +36,12 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"/api/hassio_ingress/test/certificates", response.data)
         self.assertIn(b"Certificate actions", response.data)
         self.assertIn(b"Automatic IoT CA enrollment", response.data)
-        self.assertIn(b"IoT CA enrollment file", response.data)
-        self.assertIn(b"Create IoT CA enrollment file", response.data)
-        self.assertIn(b"Open for 5 minutes", response.data)
+        self.assertIn(b"IoT CA enrollment authorization", response.data)
+        self.assertIn(b"Create enrollment authorization", response.data)
+        self.assertIn(b"Enable for 5 minutes", response.data)
         self.assertGreaterEqual(response.data.count(b'class="button primary"'), 3)
-        self.assertIn(b'class="primary" type="submit">Open for 5 minutes', response.data)
+        self.assertIn(b'class="primary" type="submit">Enable for 5 minutes', response.data)
+        self.assertLess(response.data.index(b'class="stats"'), response.data.index(b"Certificate actions"))
 
     def test_automatic_enrollment_is_an_overview_action_with_countdown(self):
         settings = self.client.get("/settings")
@@ -62,7 +63,7 @@ class WebTests(unittest.TestCase):
             data={"csrf_token": self.csrf()}, follow_redirects=True,
         )
         self.assertIn(b"Automatic IoT CA enrollment closed", closed.data)
-        self.assertIn(b"Open for 5 minutes", closed.data)
+        self.assertIn(b"Enable for 5 minutes", closed.data)
 
     def test_initial_setup_renders_submitable_identity_defaults(self):
         engine = FakeEngine()
@@ -255,17 +256,32 @@ class WebTests(unittest.TestCase):
         x509.load_der_x509_certificate(root_der.data)
 
     def test_acme_url_has_copy_controls(self):
-        for path in ("/", "/settings"):
-            response = self.client.get(path)
-            self.assertIn(b'data-copy-target="#acme-directory"', response.data)
-            self.assertIn(b'aria-label="Copy ACME directory URL"', response.data)
-            self.assertIn(b'class="copy-icon"', response.data)
-
         dashboard = self.client.get("/")
-        self.assertIn(b"Service endpoints", dashboard.data)
-        self.assertIn(b'data-copy-target="#issuing-service"', dashboard.data)
-        self.assertIn(b'aria-label="Copy issuing service URL"', dashboard.data)
+        self.assertNotIn(b"Service endpoints", dashboard.data)
+        self.assertNotIn(b'data-copy-target="#issuing-service"', dashboard.data)
+        self.assertNotIn(b'data-copy-target="#acme-directory"', dashboard.data)
         self.assertNotIn(b"<p>Issuing service:", dashboard.data)
+
+        settings = self.client.get("/settings")
+        for target, label in (
+            (b"#issuing-service", b"Copy issuing service URL"),
+            (b"#acme-directory", b"Copy ACME directory URL"),
+        ):
+            self.assertIn(b'data-copy-target="' + target + b'"', settings.data)
+            self.assertIn(b'aria-label="' + label + b'"', settings.data)
+        self.assertGreaterEqual(settings.data.count(b'class="copy-icon"'), 2)
+
+    def test_primary_navigation_targets_distinct_pages_and_marks_current_tab(self):
+        expected = {
+            "/": b"Overview",
+            "/certificates": b"Certificates",
+            "/audit": b"Audit",
+            "/settings": b"Settings",
+        }
+        for path, label in expected.items():
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b'aria-current="page">' + label + b"</a>", response.data)
 
     def test_public_acme_settings_never_render_tokens(self):
         response = self.client.get("/settings")
@@ -453,7 +469,7 @@ class WebTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"IoT CA enrollment file is ready", response.data)
+        self.assertIn(b"IoT CA enrollment authorization is ready", response.data)
         self.assertIn(b"device.iotenroll", response.data)
         download = self.client.get("/download")
         self.assertEqual(

@@ -12,10 +12,10 @@
     <a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-mark">CA</span><span>IoT Certificate Authority</span></a>
     {% if initialized %}
     <nav aria-label="Primary">
-      <a href="{{ url_for('dashboard') }}">Overview</a>
-      <a href="{{ url_for('certificates') }}">Certificates</a>
-      <a href="{{ url_for('audit') }}">Audit</a>
-      <a href="{{ url_for('settings') }}">Settings</a>
+      <a href="{{ url_for('dashboard') }}"{{ ' class="active" aria-current="page"'|safe if request.endpoint == 'dashboard' else '' }}>Overview</a>
+      <a href="{{ url_for('certificates') }}"{{ ' class="active" aria-current="page"'|safe if request.endpoint in ('certificates', 'certificate_detail', 'new_certificate', 'new_public_certificate', 'new_device_enrollment') else '' }}>Certificates</a>
+      <a href="{{ url_for('audit') }}"{{ ' class="active" aria-current="page"'|safe if request.endpoint == 'audit' else '' }}>Audit</a>
+      <a href="{{ url_for('settings') }}"{{ ' class="active" aria-current="page"'|safe if request.endpoint == 'settings' else '' }}>Settings</a>
     </nav>
     {% endif %}
   </header>

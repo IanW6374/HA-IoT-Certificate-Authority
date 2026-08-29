@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Place certificate totals above the action panel and label the temporary
+  automatic enrollment control **Enable for 5 minutes**.
+- Keep the issuing-service and ACME-directory URLs on Settings, with accessible
+  copy controls for both, and mark the active Overview, Certificates, Audit or
+  Settings tab explicitly.
+- Standardise the one-time method name as **IoT CA enrollment authorization
+  (`.iotenroll`)** across IoT CA and IoT-MD.
+
 ## 0.4.10
 
 - Group the issuing-service and ACME-directory URLs together in the Overview
