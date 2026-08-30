@@ -1,3 +1,3 @@
 """Home Assistant IoT Certificate Authority."""
 
-__version__ = "0.4.12"
+__version__ = "0.4.13"

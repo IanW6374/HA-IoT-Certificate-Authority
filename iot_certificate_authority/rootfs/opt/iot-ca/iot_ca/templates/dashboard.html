@@ -37,8 +37,8 @@
       <article class="support-card">
         <h3>CA trust downloads</h3>
         <p>Install the root trust anchor on clients, or use the full CA chain when a service expects the issuing intermediate and root together. No private keys are included.</p>
-        <div class="download-group"><strong>Root certificate</strong><div class="actions"><a class="button" href="{{ url_for('root_pem') }}">PEM</a><a class="button secondary" href="{{ url_for('root_der') }}">DER</a></div></div>
-        <div class="download-group"><strong>Full CA chain</strong><div class="actions"><a class="button" href="{{ url_for('ca_fullchain_pem') }}">PEM</a><a class="button secondary" href="{{ url_for('ca_fullchain_pkcs7') }}">PKCS#7 DER</a></div></div>
+        <div class="download-group"><strong>Root certificate</strong><div class="actions download-actions"><a class="button" href="{{ url_for('root_pem') }}" title="Download root certificate in PEM format">PEM</a><a class="button secondary" href="{{ url_for('root_der') }}" title="Download root certificate in DER format">DER</a></div></div>
+        <div class="download-group"><strong>Full CA chain</strong><div class="actions download-actions"><a class="button" href="{{ url_for('ca_fullchain_pem') }}" title="Download full CA chain in PEM format">PEM</a><a class="button secondary" href="{{ url_for('ca_fullchain_pkcs7') }}" title="Download full CA chain as PKCS#7 DER">PKCS#7 DER</a></div></div>
       </article>
       <article class="support-card">
         <h3>Service endpoints</h3>

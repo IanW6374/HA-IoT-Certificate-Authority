@@ -336,6 +336,32 @@ def create_app(*, data_root=None, service=None):
             mimetype,
         )
 
+    @app.get("/certificates/<certificate_id>/fullchain")
+    def download_certificate_fullchain(certificate_id):
+        _require_initialized(certificate_service)
+        certificate = certificate_service.certificate(certificate_id)
+        if not certificate:
+            abort(404)
+        encoding = request.args.get("format", "pem").strip().lower()
+        formats = {
+            "pem": ("fullchain.pem", "application/x-pem-file"),
+            "pkcs7-pem": ("fullchain-pem.p7b", "application/pkcs7-mime"),
+            "pkcs7-der": ("fullchain.p7b", "application/pkcs7-mime"),
+        }
+        if encoding not in formats:
+            abort(400, "Full-chain format must be PEM, PKCS#7 PEM or PKCS#7 DER")
+        suffix, mimetype = formats[encoding]
+        filename = secure_filename(certificate["common_name"]) or "certificate"
+        try:
+            payload = certificate_service.certificate_chain(
+                certificate_id, encoding
+            )
+        except ValueError as exc:
+            abort(400, str(exc))
+        return _memory_download(
+            payload, f"{filename}-{suffix}", mimetype
+        )
+
     @app.post("/certificates/<certificate_id>/renew")
     def renew_certificate(certificate_id):
         _require_initialized(certificate_service)

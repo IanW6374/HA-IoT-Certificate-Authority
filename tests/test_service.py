@@ -158,6 +158,30 @@ class ServiceTests(unittest.TestCase):
             x509.load_der_x509_certificate(der).fingerprint(hashes.SHA256()),
         )
 
+    def test_device_fullchain_contains_leaf_intermediate_and_root(self):
+        certificate_id, _ = self.service.issue(
+            profile_slug="tls-server",
+            common_name="device.home.arpa",
+            sans="device.home.arpa",
+            key_type="ec-p256",
+            validity_days=90,
+            export_format="pem",
+        )
+
+        pem = self.service.certificate_chain(certificate_id, "pem")
+        self.assertEqual(pem.count(b"-----BEGIN CERTIFICATE-----"), 3)
+        pkcs7_pem = pkcs7.load_pem_pkcs7_certificates(
+            self.service.certificate_chain(certificate_id, "pkcs7-pem")
+        )
+        pkcs7_der = pkcs7.load_der_pkcs7_certificates(
+            self.service.certificate_chain(certificate_id, "pkcs7-der")
+        )
+        self.assertEqual(len(pkcs7_pem), 3)
+        self.assertEqual(len(pkcs7_der), 3)
+
+        with self.assertRaisesRegex(ValueError, "full-chain format"):
+            self.service.certificate_chain(certificate_id, "der")
+
     def test_public_certificate_exports_reject_unknown_encoding(self):
         with self.assertRaisesRegex(ValueError, "PEM or DER"):
             self.service.root_trust("pkcs12")

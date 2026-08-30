@@ -14,6 +14,17 @@
     <a class="button secondary" href="{{ url_for('download_certificate', certificate_id=certificate.id, format='der') }}">Download DER</a>
   </div>
 </section>
+{% if certificate.source != 'external-acme' %}
+<section class="panel">
+  <h2>Download device full chain</h2>
+  <p>Includes the device certificate, issuing intermediate CA and root CA. Use PEM for services that accept a certificate chain, or PKCS#7 when the target certificate store requires a chain container. No private key is included.</p>
+  <div class="actions">
+    <a class="button" href="{{ url_for('download_certificate_fullchain', certificate_id=certificate.id, format='pem') }}">Download full-chain PEM</a>
+    <a class="button secondary" href="{{ url_for('download_certificate_fullchain', certificate_id=certificate.id, format='pkcs7-pem') }}">Download PKCS#7 PEM</a>
+    <a class="button secondary" href="{{ url_for('download_certificate_fullchain', certificate_id=certificate.id, format='pkcs7-der') }}">Download PKCS#7 DER</a>
+  </div>
+</section>
+{% endif %}
 {% if certificate.status == 'active' and certificate.source != 'external-acme' %}
 <section class="grid two">
   {% if certificate.source != 'acme' %}

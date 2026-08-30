@@ -168,6 +168,9 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"iot-ca-admin", detail.data)
         self.assertIn(b"Download PEM", detail.data)
         self.assertIn(b"Download DER", detail.data)
+        self.assertIn(b"Download full-chain PEM", detail.data)
+        self.assertIn(b"Download PKCS#7 PEM", detail.data)
+        self.assertIn(b"Download PKCS#7 DER", detail.data)
 
         pem = self.client.get(
             "/certificates/" + certificate_id + "/download?format=pem"
@@ -183,6 +186,28 @@ class WebTests(unittest.TestCase):
         self.assertEqual(der.mimetype, "application/pkix-cert")
         self.assertNotIn(b"-----BEGIN CERTIFICATE-----", der.data)
         x509.load_der_x509_certificate(der.data)
+
+        fullchain = self.client.get(
+            "/certificates/" + certificate_id + "/fullchain?format=pem"
+        )
+        self.assertEqual(fullchain.status_code, 200)
+        self.assertEqual(
+            fullchain.data.count(b"-----BEGIN CERTIFICATE-----"), 3
+        )
+        fullchain_pem = self.client.get(
+            "/certificates/" + certificate_id +
+            "/fullchain?format=pkcs7-pem"
+        )
+        self.assertEqual(
+            len(pkcs7.load_pem_pkcs7_certificates(fullchain_pem.data)), 3
+        )
+        fullchain_der = self.client.get(
+            "/certificates/" + certificate_id +
+            "/fullchain?format=pkcs7-der"
+        )
+        self.assertEqual(
+            len(pkcs7.load_der_pkcs7_certificates(fullchain_der.data)), 3
+        )
 
     def test_iot_md_export_uses_human_readable_label(self):
         certificate_id, _token = self.service.issue(
@@ -245,6 +270,7 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"Root certificate", dashboard.data)
         self.assertIn(b"Full CA chain", dashboard.data)
         self.assertIn(b"PKCS#7 DER", dashboard.data)
+        self.assertEqual(dashboard.data.count(b"download-actions"), 2)
 
         settings = self.client.get("/settings")
         self.assertNotIn(b"Public CA certificates", settings.data)

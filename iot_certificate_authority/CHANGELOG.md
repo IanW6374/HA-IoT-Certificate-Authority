@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.13
+
+- Align the CA trust download controls into consistent format columns.
+- Add per-device full-chain downloads containing the leaf, issuing intermediate
+  and root certificates in concatenated PEM, PKCS#7 PEM and PKCS#7 DER formats.
+
 ## 0.4.12
 
 - Consolidate root/full-chain trust downloads and copyable service endpoints

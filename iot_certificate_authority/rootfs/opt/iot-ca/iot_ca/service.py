@@ -984,6 +984,39 @@ class CertificateService:
         certificate = x509.load_pem_x509_certificate(record["certificate_pem"])
         return certificate.public_bytes(self._public_certificate_encoding(encoding))
 
+    def certificate_chain(self, certificate_id, encoding="pem"):
+        """Return a private-CA leaf with its issuing intermediate and root."""
+        record = self.certificate(certificate_id)
+        if not record:
+            raise ValueError("Certificate not found")
+        leaf = x509.load_pem_x509_certificate(record["certificate_pem"])
+        intermediate = x509.load_pem_x509_certificate(
+            self.engine.intermediate_certificate()
+        )
+        root = x509.load_pem_x509_certificate(self.engine.root_certificate())
+        if leaf.issuer != intermediate.subject:
+            raise ValueError(
+                "A local CA full chain is unavailable for this certificate"
+            )
+        certificates = [leaf, intermediate, root]
+        encoding = str(encoding).strip().lower()
+        if encoding == "pem":
+            return b"".join(
+                item.public_bytes(serialization.Encoding.PEM)
+                for item in certificates
+            )
+        if encoding == "pkcs7-pem":
+            return pkcs7.serialize_certificates(
+                certificates, serialization.Encoding.PEM
+            )
+        if encoding in {"pkcs7", "pkcs7-der"}:
+            return pkcs7.serialize_certificates(
+                certificates, serialization.Encoding.DER
+            )
+        raise ValueError(
+            "Device full-chain format must be PEM, PKCS#7 PEM or PKCS#7 DER"
+        )
+
     def certificates(self):
         return self.inventory.certificates()
 
