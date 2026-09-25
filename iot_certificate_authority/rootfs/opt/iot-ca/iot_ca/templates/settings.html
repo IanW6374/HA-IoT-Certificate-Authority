@@ -2,22 +2,23 @@
 {% block title %}Settings · IoT Certificate Authority{% endblock %}
 {% block content %}
 <section class="hero"><p class="eyebrow">Authority configuration</p><h1>{{ settings.ca_name }}</h1><p>Configuration is read-only in the first release to keep CA identity changes explicit and auditable.</p></section>
+<div id="settings-workspace">
 <section class="panel detail-list"><h2>Identity policy</h2><dl><dt>CA DNS name</dt><dd>{{ settings.ca_dns }}</dd><dt>Allowed DNS suffix</dt><dd>{{ settings.allowed_dns_suffix }}</dd><dt>Public SANs</dt><dd>{{ 'Allowed' if settings.allow_public_sans else 'Denied' }}</dd><dt>Initialized</dt><dd>{{ settings.initialized_at }}</dd></dl></section>
-<section class="panel">
+<section id="service-port-settings" class="panel">
   <div class="section-head"><div><p class="eyebrow">Network</p><h2>LAN service endpoints</h2></div></div>
   <p>Set these to the externally reachable Home Assistant host ports. The add-on’s internal listeners remain TCP 9000 and 9010; configure matching host-port mappings in the add-on Network settings.</p>
-  <form class="form-grid" method="post" action="{{ url_for('service_port_settings') }}">
+  <form class="form-grid" method="post" action="{{ url_for('service_port_settings') }}" data-portal-async data-portal-dirty data-refresh-target="#service-port-settings" data-busy-label="Saving…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>IoT CA server name<input value="{{ settings.ca_dns }}" disabled><span class="help">Both the CA/ACME and IoT MD provisioning services use this CA identity.</span></label>
     <div class="grid two compact"><label>CA and ACME port<input name="ca_port" type="number" min="1" max="65535" value="{{ settings.ca_port }}"><span class="help">Default: 9000.</span></label><label>IoT MD provisioning port<input name="provisioning_port" type="number" min="1" max="65535" value="{{ settings.provisioning_port }}"><span class="help">Default: 9010.</span></label></div>
-    <button type="submit">Save service ports</button>
+    <div class="actions settings-save-bar"><span class="portal-status" role="status" aria-live="polite"></span><button class="secondary" type="reset">Discard</button><button type="submit">Save service ports</button></div>
   </form>
 </section>
 {% set external = settings.external_acme %}
-<section class="panel">
+<section id="external-acme-settings" class="panel">
   <div class="section-head"><div><p class="eyebrow">External issuer</p><h2>Public portal certificates</h2></div></div>
   <p>Use Let’s Encrypt with Cloudflare DNS-01 for browser-trusted IoT MD portal identities. This does not change the private CA used by MQTT, Device API/fleet, Syslog or release services.</p>
-  <form class="form-grid" method="post" action="{{ url_for('external_acme_settings') }}">
+  <form class="form-grid" method="post" action="{{ url_for('external_acme_settings') }}" data-portal-async data-portal-dirty data-refresh-target="#external-acme-settings" data-busy-label="Saving…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="check"><input type="checkbox" name="enabled" {{ 'checked' if external.enabled else '' }}>Enable public ACME issuance</label>
     <div class="grid two compact"><label>ACME account email<input type="email" name="email" maxlength="254" value="{{ external.email }}" autocomplete="email"><span class="help">The built-in ACME client registers the Let’s Encrypt account with this email; no separate Home Assistant integration is required.</span></label><label>Allowed public portal DNS suffix<input name="zone" maxlength="253" value="{{ external.zone }}" placeholder="iot.example.com"><span class="help">Restricts public certificates to this namespace. Scope the Cloudflare token to its authoritative DNS zone, for example example.com.</span></label></div>
@@ -26,7 +27,8 @@
     <label class="check"><input type="checkbox" name="terms_accepted" {{ 'checked' if external.terms_accepted else '' }}>I accept the selected ACME provider’s subscriber agreement</label>
     <label>Automatic IoT CA enrollment window (minutes)<input name="auto_enroll_minutes" type="number" min="1" max="60" value="{{ external.auto_enroll_minutes }}"><span class="help">Controls the temporary window opened from Overview. The default is 5 minutes; requests remain rate-limited and audited.</span></label>
     <div class="warning"><strong>Public DNS and Certificate Transparency</strong><p>Requested public hostnames can become publicly discoverable. The Cloudflare token is stored mode 0600, passed by file reference, and never included in certificate exports or audit details.</p></div>
-    <button type="submit">Save public ACME settings</button>
+    <div class="actions settings-save-bar"><span class="portal-status" role="status" aria-live="polite"></span><button class="secondary" type="reset">Discard</button><button type="submit">Save public ACME settings</button></div>
   </form>
 </section>
+</div>
 {% endblock %}

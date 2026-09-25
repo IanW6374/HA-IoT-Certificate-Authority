@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ certificate.common_name }} · IoT Certificate Authority{% endblock %}
 {% block content %}
+<div id="certificate-detail-workspace">
 <section class="hero split"><div><p class="eyebrow">{{ profiles[certificate.profile].name }}</p><h1>{{ certificate.common_name }}</h1><div class="record-summary"><span class="pill {{ certificate.status }}">{{ certificate.status }}</span><span>Issued {{ certificate.not_before[:10] }} · serial …{{ certificate.serial[-12:] }}</span></div></div><a class="button secondary" href="{{ url_for('certificates') }}">Back to inventory</a></section>
 <section class="grid two">
   <article class="panel detail-list"><h2>Identity</h2><dl><dt>Subject alternative names</dt><dd>{{ certificate.sans|join(', ') or 'None' }}</dd><dt>Key type</dt><dd>{{ certificate.key_type }}</dd><dt>Serial</dt><dd class="mono">{{ certificate.serial }}</dd><dt>SHA-256 fingerprint</dt><dd class="mono wrap">{{ certificate.fingerprint }}</dd></dl></article>
@@ -32,17 +33,18 @@
   {% else %}
   <article class="panel"><h2>Automatic renewal</h2><p>This certificate is managed by its ACME client. A replacement will be linked here automatically when the client renews it.</p></article>
   {% endif %}
-  <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this certificate? It will remain cryptographically valid until expiry, but step-ca will reject renewal."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke</h2><p>Blocks future renewal. Existing clients must enforce replacement because this CA uses passive revocation.</p><button class="danger" type="submit">Revoke certificate</button></form>
+  <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this certificate? It will remain cryptographically valid until expiry, but step-ca will reject renewal." data-portal-async data-refresh-target="#certificate-detail-workspace" data-busy-label="Revoking…"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke</h2><p>Blocks future renewal. Existing clients must enforce replacement because this CA uses passive revocation.</p><button class="danger" type="submit">Revoke certificate</button></form>
 </section>
 {% endif %}
 {% if certificate.status == 'active' and certificate.source == 'external-acme' %}
 <section class="grid two">
   <article class="panel"><h2>Public portal lifecycle</h2><p>The portal private key was removed after the one-time export. Edit the existing SANs and reissue before expiry when rotating this identity.</p><a class="button" href="{{ url_for('new_public_certificate', replace=certificate.id) }}">Edit and reissue certificate</a></article>
   {% if certificate.provisioner == 'letsencrypt-cloudflare-dns01-account-v1' %}
-  <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this public certificate with its ACME issuer? Deployed portals must install a replacement."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke public certificate</h2><p>Requests revocation from the public ACME issuer using the retained ACME account identity. The portal private key is not retained.</p><button class="danger" type="submit">Revoke public certificate</button></form>
+  <form class="panel danger-zone" method="post" action="{{ url_for('revoke_certificate', certificate_id=certificate.id) }}" data-confirm="Revoke this public certificate with its ACME issuer? Deployed portals must install a replacement." data-portal-async data-refresh-target="#certificate-detail-workspace" data-busy-label="Revoking…"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>Revoke public certificate</h2><p>Requests revocation from the public ACME issuer using the retained ACME account identity. The portal private key is not retained.</p><button class="danger" type="submit">Revoke public certificate</button></form>
   {% else %}
   <article class="panel"><h2>Revocation unavailable for this certificate</h2><p>This certificate predates retained ACME account support. Issue a replacement with the current IoT CA release; the replacement can then be revoked here.</p></article>
   {% endif %}
 </section>
 {% endif %}
+</div>
 {% endblock %}

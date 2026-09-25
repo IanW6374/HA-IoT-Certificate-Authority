@@ -66,6 +66,41 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"Automatic IoT CA enrollment closed", closed.data)
         self.assertIn(b"Enable for 5 minutes", closed.data)
 
+    def test_routine_actions_support_in_place_json_feedback(self):
+        csrf_token = self.csrf()
+        opened = self.client.post(
+            "/automatic-enrollment/open",
+            data={"csrf_token": csrf_token},
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(opened.status_code, 200)
+        self.assertEqual(opened.json["refresh_target"], "#certificate-actions")
+        self.assertIn("opened for 5 minutes", opened.json["message"])
+
+        saved = self.client.post(
+            "/settings/service-ports",
+            data={
+                "csrf_token": csrf_token, "ca_port": "9443",
+                "provisioning_port": "9444",
+            },
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json["refresh_target"], "#service-port-settings")
+        self.assertEqual(saved.json["message"], "IoT CA service ports saved")
+
+        settings = self.client.get("/settings")
+        self.assertIn(b"data-portal-async", settings.data)
+        self.assertIn(b"data-portal-dirty", settings.data)
+        self.assertIn(b">Discard</button>", settings.data)
+
+        script = (
+            Path(__file__).parents[1]
+            / "iot_certificate_authority/rootfs/opt/iot-ca/iot_ca/static/app.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('form[data-portal-async]', script)
+        self.assertIn('new DOMParser()', script)
+
     def test_initial_setup_renders_submitable_identity_defaults(self):
         engine = FakeEngine()
         engine.initialized = False

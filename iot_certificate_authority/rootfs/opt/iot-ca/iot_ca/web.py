@@ -45,6 +45,27 @@ def _secret_key(data_root: Path):
     return path.read_text().strip()
 
 
+def _action_response(message, endpoint, refresh_target, status=200, **values):
+    """Return structured feedback to enhanced forms, with HTML fallback."""
+    if request.accept_mimetypes.best == "application/json":
+        payload = {
+            "message": message,
+            "refresh_url": url_for(endpoint, **values),
+            "refresh_target": refresh_target,
+        }
+        return jsonify(payload), status
+    flash(message, "success" if status < 400 else "error")
+    return redirect(url_for(endpoint, **values))
+
+
+def _action_error(error, endpoint, refresh_target, **values):
+    message = str(error)
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({"error": message}), 400
+    flash(message, "error")
+    return redirect(url_for(endpoint, **values))
+
+
 def create_app(*, data_root=None, service=None):
     data_root = Path(data_root or os.environ.get("IOT_CA_DATA_ROOT", "/config/iot-ca"))
     app = Flask(__name__)
@@ -386,12 +407,18 @@ def create_app(*, data_root=None, service=None):
             certificate = certificate_service.certificate(certificate_id)
             certificate_service.revoke(certificate_id)
             if certificate and certificate.get("source") == "external-acme":
-                flash("Public certificate revoked with its ACME issuer.", "success")
+                message = "Public certificate revoked with its ACME issuer."
             else:
-                flash("Certificate revoked. Existing copies remain valid until expiry, but cannot renew.", "success")
+                message = "Certificate revoked. Existing copies remain valid until expiry, but cannot renew."
         except Exception as exc:
-            flash(str(exc), "error")
-        return redirect(url_for("certificate_detail", certificate_id=certificate_id))
+            return _action_error(
+                exc, "certificate_detail", "#certificate-detail-workspace",
+                certificate_id=certificate_id,
+            )
+        return _action_response(
+            message, "certificate_detail", "#certificate-detail-workspace",
+            certificate_id=certificate_id,
+        )
 
     @app.get("/export-ready")
     def export_ready():
@@ -528,14 +555,15 @@ def create_app(*, data_root=None, service=None):
         _require_initialized(certificate_service)
         try:
             settings = certificate_service.set_automatic_enrollment(True)
-            flash(
+            message = (
                 "Automatic IoT CA enrollment opened for " +
-                str(settings["auto_enroll_minutes"]) + " minutes",
-                "success",
+                str(settings["auto_enroll_minutes"]) + " minutes"
             )
         except Exception as exc:
-            flash(str(exc), "error")
-        return redirect(url_for("dashboard"))
+            return _action_error(exc, "dashboard", "#certificate-actions")
+        return _action_response(
+            message, "dashboard", "#certificate-actions"
+        )
 
     @app.post("/settings/service-ports")
     def service_port_settings():
@@ -545,20 +573,22 @@ def create_app(*, data_root=None, service=None):
                 ca_port=request.form.get("ca_port", "9000"),
                 provisioning_port=request.form.get("provisioning_port", "9010"),
             )
-            flash("IoT CA service ports saved", "success")
+            message = "IoT CA service ports saved"
         except Exception as exc:
-            flash(str(exc), "error")
-        return redirect(url_for("settings"))
+            return _action_error(exc, "settings", "#service-port-settings")
+        return _action_response(message, "settings", "#service-port-settings")
 
     @app.post("/automatic-enrollment/close")
     def close_automatic_enrollment():
         _require_initialized(certificate_service)
         try:
             certificate_service.set_automatic_enrollment(False)
-            flash("Automatic IoT CA enrollment closed", "success")
+            message = "Automatic IoT CA enrollment closed"
         except Exception as exc:
-            flash(str(exc), "error")
-        return redirect(url_for("dashboard"))
+            return _action_error(exc, "dashboard", "#certificate-actions")
+        return _action_response(
+            message, "dashboard", "#certificate-actions"
+        )
 
     @app.post("/settings/external-acme")
     def external_acme_settings():
@@ -577,10 +607,10 @@ def create_app(*, data_root=None, service=None):
                     "provisioning_host", "homeassistant.local"
                 ),
             )
-            flash("Public ACME settings saved", "success")
+            message = "Public ACME settings saved"
         except Exception as exc:
-            flash(str(exc), "error")
-        return redirect(url_for("settings"))
+            return _action_error(exc, "settings", "#external-acme-settings")
+        return _action_response(message, "settings", "#external-acme-settings")
 
     @app.errorhandler(400)
     @app.errorhandler(403)

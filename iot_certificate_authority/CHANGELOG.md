@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.14
+
+- Align routine portal actions with IoT-MD's in-place interaction model: save
+  settings, toggle automatic enrollment and revoke certificates without a full
+  page redirect while retaining server-rendered fallbacks.
+- Add consistent inline busy, success and error feedback, sticky Save/Discard
+  controls and unsaved-change protection for editable settings.
+- Keep page transitions for issuance and one-time private-key exports where the
+  security workflow genuinely moves to a new stage.
+
 ## 0.4.13
 
 - Align the CA trust download controls into consistent format columns.

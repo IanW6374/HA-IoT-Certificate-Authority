@@ -1,10 +1,121 @@
 (() => {
   "use strict";
 
-  document.querySelectorAll("form[data-confirm]").forEach((form) => {
-    form.addEventListener("submit", (event) => {
-      if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (form.matches("form[data-confirm]") && !window.confirm(form.dataset.confirm)) {
+      event.preventDefault();
+    }
+  });
+
+  function statusElement(form) {
+    let status = form.querySelector(".portal-status");
+    if (status) return status;
+    status = document.createElement("span");
+    status.className = "portal-status";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    const actions = form.querySelector(".actions");
+    if (actions) actions.prepend(status);
+    else form.append(status);
+    return status;
+  }
+
+  function setStatus(status, state, message) {
+    status.className = `portal-status${state ? ` ${state}` : ""}`;
+    status.textContent = message || "";
+  }
+
+  function initializeCountdowns(root = document) {
+    root.querySelectorAll("[data-enrollment-countdown]").forEach((counter) => {
+      if (counter.dataset.countdownReady) return;
+      counter.dataset.countdownReady = "true";
+      const deadline = Date.parse(counter.dataset.until || "");
+      let expired = false;
+      function updateCountdown() {
+        const remaining = Number.isFinite(deadline)
+          ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : 0;
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        counter.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+        if (!remaining && !expired) {
+          expired = true;
+          window.setTimeout(() => window.location.reload(), 500);
+        }
+      }
+      updateCountdown();
+      window.setInterval(updateCountdown, 1000);
     });
+  }
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+    if (!form.matches("form[data-portal-async]") || event.defaultPrevented) return;
+    event.preventDefault();
+    const button = event.submitter || form.querySelector("button[type=submit]");
+    const original = button ? button.textContent : "";
+    const status = statusElement(form);
+    if (button) {
+      button.disabled = true;
+      button.textContent = form.dataset.busyLabel || "Saving…";
+    }
+    setStatus(status, "", form.dataset.status || "Saving changes…");
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        body: new FormData(form),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "The change could not be saved");
+      const selector = payload.refresh_target || form.dataset.refreshTarget;
+      if (selector) {
+        const refreshed = await fetch(payload.refresh_url || window.location.href, {
+          cache: "no-store", credentials: "same-origin",
+        });
+        if (!refreshed.ok) throw new Error("The updated section could not be loaded");
+        const parsed = new DOMParser().parseFromString(await refreshed.text(), "text/html");
+        const fresh = parsed.querySelector(selector);
+        const current = document.querySelector(selector);
+        if (!fresh || !current) throw new Error("The updated section is unavailable");
+        current.replaceWith(fresh);
+        let nextStatus = fresh.querySelector(".portal-status");
+        if (!nextStatus) {
+          nextStatus = document.createElement("div");
+          nextStatus.setAttribute("role", "status");
+          nextStatus.setAttribute("aria-live", "polite");
+          fresh.prepend(nextStatus);
+        }
+        setStatus(nextStatus, "success", payload.message || "Changes saved");
+        initializeCountdowns(fresh);
+      } else {
+        setStatus(status, "success", payload.message || "Changes saved");
+      }
+      form.dataset.portalDirty = "0";
+    } catch (error) {
+      setStatus(status, "error", error.message);
+    } finally {
+      if (button && document.contains(button)) {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    }
+  });
+
+  function markDirty(event) {
+    const form = event.target.form;
+    if (form && form.hasAttribute("data-portal-dirty")) form.dataset.portalDirty = "1";
+  }
+  document.addEventListener("input", markDirty, true);
+  document.addEventListener("change", markDirty, true);
+  document.addEventListener("reset", (event) => {
+    if (event.target.matches("form[data-portal-dirty]")) event.target.dataset.portalDirty = "0";
+  }, true);
+  window.addEventListener("beforeunload", (event) => {
+    if (!document.querySelector('form[data-portal-dirty][data-portal-dirty="1"]')) return;
+    event.preventDefault();
+    event.returnValue = "";
   });
 
   document.querySelectorAll("[data-copy-target]").forEach((button) => {
@@ -46,23 +157,7 @@
     control.addEventListener("change", () => control.form.requestSubmit());
   });
 
-  document.querySelectorAll("[data-enrollment-countdown]").forEach((counter) => {
-    const deadline = Date.parse(counter.dataset.until || "");
-    let expired = false;
-    function updateCountdown() {
-      const remaining = Number.isFinite(deadline)
-        ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : 0;
-      const minutes = Math.floor(remaining / 60);
-      const seconds = remaining % 60;
-      counter.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-      if (!remaining && !expired) {
-        expired = true;
-        window.setTimeout(() => window.location.reload(), 500);
-      }
-    }
-    updateCountdown();
-    window.setInterval(updateCountdown, 1000);
-  });
+  initializeCountdowns();
 
   const publicCertificateForm = document.getElementById("public-certificate-form");
   if (publicCertificateForm) {

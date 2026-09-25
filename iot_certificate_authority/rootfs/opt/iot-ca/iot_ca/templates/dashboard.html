@@ -13,7 +13,7 @@
   <article><span>Expiring in 30 days</span><strong>{{ dashboard.expiring|length }}</strong></article>
   <article><span>CA engine</span><strong class="status {{ 'good' if dashboard.ca_health.online else 'bad' }}">{{ 'Online' if dashboard.ca_health.online else 'Offline' }}</strong></article>
 </section>
-<section class="panel action-panel">
+<section id="certificate-actions" class="panel action-panel">
   <div class="section-head"><div><p class="eyebrow">Operations</p><h2>Certificate actions</h2></div></div>
   <div class="action-grid">
     <article class="action-card"><h3>Private certificate</h3><p>Issue a private-CA identity for IoT MD or another TLS client or server.</p><a class="button primary" href="{{ url_for('new_certificate') }}">Issue private certificate</a></article>
@@ -22,9 +22,9 @@
     <article class="action-card"><h3>IoT CA enrollment authorization (<code>.iotenroll</code>)</h3><p>Create a one-time, host-bound enrollment authorization for a single IoT MD device.</p><a class="button primary" href="{{ url_for('new_device_enrollment') }}">Create enrollment authorization</a></article>
     <article class="action-card"><h3>Automatic IoT CA enrollment</h3><p>Temporarily allow trusted-LAN IoT MD devices to request host-bound enrollment.</p>
       {% if external.auto_enroll_enabled %}
-      <form method="post" action="{{ url_for('close_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="secondary enrollment-button" type="submit">Enrollment open · <span data-enrollment-countdown data-until="{{ external.auto_enroll_until }}">{{ external.auto_enroll_remaining_seconds }}</span> · close</button></form>
+      <form method="post" action="{{ url_for('close_automatic_enrollment') }}" data-portal-async data-refresh-target="#certificate-actions" data-busy-label="Closing…"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="secondary enrollment-button" type="submit">Enrollment open · <span data-enrollment-countdown data-until="{{ external.auto_enroll_until }}">{{ external.auto_enroll_remaining_seconds }}</span> · close</button></form>
       {% else %}
-      <form method="post" action="{{ url_for('open_automatic_enrollment') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="primary" type="submit">Enable for {{ external.auto_enroll_minutes }} minutes</button></form>
+      <form method="post" action="{{ url_for('open_automatic_enrollment') }}" data-portal-async data-refresh-target="#certificate-actions" data-busy-label="Opening…"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="primary" type="submit">Enable for {{ external.auto_enroll_minutes }} minutes</button></form>
       {% endif %}
     </article>
     {% else %}
