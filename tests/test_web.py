@@ -43,6 +43,8 @@ class WebTests(unittest.TestCase):
         self.assertGreaterEqual(response.data.count(b'class="button primary"'), 3)
         self.assertIn(b'class="primary" type="submit">Enable for 5 minutes', response.data)
         self.assertLess(response.data.index(b'class="stats"'), response.data.index(b"Certificate actions"))
+        self.assertEqual(response.data.count(b'class="metric"'), 4)
+        self.assertIn(b'IoT<br>CA', response.data)
 
     def test_automatic_enrollment_is_an_overview_action_with_countdown(self):
         settings = self.client.get("/settings")

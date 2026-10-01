@@ -8,10 +8,10 @@
 {% endif %}
 {% set external = settings.external_acme %}
 <section class="stats">
-  <article><span>Total</span><strong>{{ dashboard.counts.total }}</strong></article>
-  <article><span>Active</span><strong>{{ dashboard.counts.active }}</strong></article>
-  <article><span>Expiring in 30 days</span><strong>{{ dashboard.expiring|length }}</strong></article>
-  <article><span>CA engine</span><strong class="status {{ 'good' if dashboard.ca_health.online else 'bad' }}">{{ 'Online' if dashboard.ca_health.online else 'Offline' }}</strong></article>
+  <a class="metric" href="{{ url_for('certificates', status='all') }}"><span>Total certificates</span><strong>{{ dashboard.counts.total }}</strong></a>
+  <a class="metric" href="{{ url_for('certificates', status='active') }}"><span>Active certificates</span><strong>{{ dashboard.counts.active }}</strong></a>
+  <a class="metric" href="{{ url_for('certificates', status='active') }}"><span>Expiring in 30 days</span><strong>{{ dashboard.expiring|length }}</strong></a>
+  <a class="metric" href="{{ url_for('settings') }}"><span>CA engine</span><strong class="status {{ 'good' if dashboard.ca_health.online else 'bad' }}">{{ 'Online' if dashboard.ca_health.online else 'Offline' }}</strong></a>
 </section>
 <section id="certificate-actions" class="panel action-panel">
   <div class="section-head"><div><p class="eyebrow">Operations</p><h2>Certificate actions</h2></div></div>

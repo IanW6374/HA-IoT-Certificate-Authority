@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- Adopt the shared IoT portal shell, content width, typography, spacing and card hierarchy.
+- Turn overview counts into linked navigation cards for faster inventory and settings access.
+- Standardise the IoT CA brand mark and responsive overview presentation with IoT-MD Management.
+
 ## 0.4.14
 
 - Align routine portal actions with IoT-MD's in-place interaction model: save
