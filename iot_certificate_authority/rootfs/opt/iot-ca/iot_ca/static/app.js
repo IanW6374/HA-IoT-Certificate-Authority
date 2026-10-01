@@ -79,7 +79,13 @@
         const fresh = parsed.querySelector(selector);
         const current = document.querySelector(selector);
         if (!fresh || !current) throw new Error("The updated section is unavailable");
+        const openDetails = [...current.querySelectorAll("details")]
+          .map((item, index) => item.open ? index : -1)
+          .filter((index) => index >= 0);
         current.replaceWith(fresh);
+        [...fresh.querySelectorAll("details")].forEach((item, index) => {
+          if (openDetails.includes(index)) item.open = true;
+        });
         let nextStatus = fresh.querySelector(".portal-status");
         if (!nextStatus) {
           nextStatus = document.createElement("div");

@@ -102,6 +102,8 @@ class WebTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('form[data-portal-async]', script)
         self.assertIn('new DOMParser()', script)
+        self.assertIn('const openDetails = [...current.querySelectorAll("details")]', script)
+        self.assertIn('if (openDetails.includes(index)) item.open = true', script)
 
     def test_initial_setup_renders_submitable_identity_defaults(self):
         engine = FakeEngine()

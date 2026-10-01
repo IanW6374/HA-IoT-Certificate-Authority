@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Preserve expanded disclosure panels when an asynchronous action refreshes
+  its surrounding portal section.
+
 ## 0.5.0
 
 - Adopt the shared IoT portal shell, content width, typography, spacing and card hierarchy.
