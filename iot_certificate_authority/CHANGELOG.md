@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.3
+
+- Match Home Assistant's compact 14 px Roboto type scale, 32 px maximum page
+  heading, 1,200 px content width, tighter controls and lower-radius panels.
+
 ## 0.5.2
 
 - Align the portal type scale, heading sizes, panel density and page spacing
