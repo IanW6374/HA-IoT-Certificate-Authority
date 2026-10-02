@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+- Align the portal type scale, heading sizes, panel density and page spacing
+  more closely with the Home Assistant add-on experience.
+
 ## 0.5.1
 
 - Preserve expanded disclosure panels when an asynchronous action refreshes
