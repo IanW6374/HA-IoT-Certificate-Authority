@@ -13,3 +13,10 @@
 
 /* Home Assistant-aligned density and type scale. */
 body{font:14px/1.45 Roboto,Noto,sans-serif;-moz-osx-font-smoothing:grayscale;-webkit-font-smoothing:antialiased}.topbar{min-height:56px;padding:8px 16px}.brand-mark{width:34px;height:34px;border-radius:8px;font-size:.65rem}.topbar nav a{padding:7px 9px;font-size:.9rem}main{width:min(1200px,calc(100% - 32px));padding:24px 0 40px}.hero{margin-bottom:18px}.hero h1{font-size:clamp(1.75rem,3vw,2rem);line-height:1.15;letter-spacing:-.02em}.hero p{font-size:1rem}.panel,.stats>.metric{border-radius:12px;box-shadow:0 2px 8px rgba(17,42,52,.07)}.panel{padding:16px}.panel h2{font-size:1.15rem}.section-head{margin-bottom:12px}.stats{gap:12px;margin-bottom:16px}.stats>.metric{padding:16px}.stats>.metric strong{font-size:1.4rem}.button,button{padding:8px 12px;border-radius:7px}.form-grid input,.form-grid select,.form-grid textarea{padding:9px 10px;border-radius:7px}
+/* Shared form controls: equal heights without stretching fields beside help text. */
+label{align-content:start;grid-auto-rows:max-content;min-width:0}
+input:not([type="checkbox"]):not([type="radio"]),select:not([multiple]):not([size]){height:42px;min-height:42px;line-height:1.4}
+textarea,select[multiple],select[size]{height:auto}
+.check{border:0;background:transparent;padding:0;min-height:42px;align-self:end;align-items:center}
+input[type="checkbox"],input[type="radio"]{width:16px;height:16px;min-height:16px;padding:0;margin:0;flex:0 0 16px}
+.form-grid input[type="checkbox"],.form-grid input[type="radio"]{width:16px;height:16px;padding:0}

@@ -12,6 +12,13 @@ from tests.helpers import FakeEngine, FakeExternalACME
 
 
 class WebTests(unittest.TestCase):
+    def test_form_controls_share_portal_alignment_and_height(self):
+        with self.client.get('/static/app.css') as response:
+            css = response.data.decode()
+        self.assertIn('align-content:start;grid-auto-rows:max-content', css)
+        self.assertIn('height:42px;min-height:42px', css)
+        self.assertIn('select:not([multiple]):not([size])', css)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)

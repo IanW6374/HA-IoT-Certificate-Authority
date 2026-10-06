@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+## 0.5.4
+
+- Align form labels and use the shared 42 px single-line control height. Keep
+  checkboxes compact and unboxed; preserve text areas and multi-select lists.
+
 ## 0.5.3
 
 - Match Home Assistant's compact 14 px Roboto type scale, 32 px maximum page
