@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.6
+
+- Use compact required-only icons, including mandatory acknowledgements.
+- Apply public ACME field and agreement requirements only while enabled.
+
 ## 0.5.5
 
 - Mark portal form fields consistently as required or optional, updating labels

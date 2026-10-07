@@ -18,7 +18,8 @@ class WebTests(unittest.TestCase):
         script = self.client.get('/static/form_requirements.js')
         self.assertEqual(script.status_code, 200)
         self.assertIn(b'control.required ? "required" : "optional"', script.data)
-        self.assertIn(b'attributeFilter:["required","data-requirement"]', script.data)
+        self.assertIn(b'attributeFilter:["required","disabled","readonly","data-requirement"]', script.data)
+        self.assertIn(b'marker.textContent = "\xe2\x9c\xb1"', script.data)
         self.assertIn(b'.field-requirement', self.client.get('/static/app.css').data)
 
     def test_form_controls_share_portal_alignment_and_height(self):
