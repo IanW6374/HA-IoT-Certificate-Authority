@@ -12,6 +12,15 @@ from tests.helpers import FakeEngine, FakeExternalACME
 
 
 class WebTests(unittest.TestCase):
+    def test_field_requirement_labels_are_loaded_for_all_forms(self):
+        page = self.client.get('/certificates/new')
+        self.assertIn(b'form_requirements.js', page.data)
+        script = self.client.get('/static/form_requirements.js')
+        self.assertEqual(script.status_code, 200)
+        self.assertIn(b'control.required ? "required" : "optional"', script.data)
+        self.assertIn(b'attributeFilter:["required","data-requirement"]', script.data)
+        self.assertIn(b'.field-requirement', self.client.get('/static/app.css').data)
+
     def test_form_controls_share_portal_alignment_and_height(self):
         with self.client.get('/static/app.css') as response:
             css = response.data.decode()

@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.5
+
+- Mark portal form fields consistently as required or optional, updating labels
+  when conditional requirements change (for example a PKCS#12 password).
 
 ## 0.5.4
 
