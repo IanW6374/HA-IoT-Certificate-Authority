@@ -1,0 +1,9 @@
+/* Portfolio form rhythm: labels above fields, checkboxes before their text. */
+.grid:has(>label),.form-grid,.filter-grid{gap:12px 16px}
+label:has(>input:not([type=checkbox]):not([type=radio])),label:has(>select),label:has(>textarea){display:grid;gap:6px;align-content:start;grid-auto-rows:max-content;font-size:14px;color:var(--ink,var(--text));font-weight:700}
+label>input:not([type=checkbox]):not([type=radio]),label>select,label>textarea{font-size:14px;min-width:0}
+label:has(>input[type=checkbox]):not(.update-switch),label.check:has(>input[type=radio]){display:flex;align-items:center;gap:9px}
+label>small,label>.help{font-size:12px;font-weight:400;color:var(--muted);line-height:1.45}
+label input[type=checkbox],label input[type=radio]{accent-color:var(--accent)}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.notice,.status,.portal-status{overflow-wrap:anywhere}

@@ -2,9 +2,14 @@
 (() => {
   "use strict";
   function annotate() {
+    for (const notice of document.querySelectorAll('.portal-status,.notice,.status:not(.badge)')) {
+      const role = notice.classList.contains('error') ? 'alert' : 'status';
+      if (notice.getAttribute('role') !== role) notice.setAttribute('role', role);
+    }
     for (const label of document.querySelectorAll("label")) {
       const control = label.control || label.querySelector("input:not([type=hidden]),select,textarea");
       if (!control || control.type === "hidden" || control.type === "radio") continue;
+      if (control.type === "checkbox" && control.parentElement === label && label.firstChild !== control) label.prepend(control);
       const entry = label.closest(".profile-entry");
       let heading = entry?.querySelector(".profile-entry-heading strong") || label.querySelector(".field-title");
       if (!heading) {
@@ -15,7 +20,7 @@
           if (!texts.length) continue;
           heading = document.createElement("span");
           heading.className = "field-title";
-          label.insertBefore(heading, label.firstChild);
+          label.insertBefore(heading, control.type === "checkbox" ? control.nextSibling : label.firstChild);
           for (const text of texts) heading.append(text);
         }
       }
@@ -46,5 +51,5 @@
   annotate();
   document.addEventListener("change", annotate);
   document.addEventListener("reset", () => requestAnimationFrame(annotate));
-  observer.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:["required","disabled","readonly","data-requirement"]});
+  observer.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:["required","disabled","readonly","data-requirement","class"]});
 })();

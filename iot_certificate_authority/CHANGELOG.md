@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.7
+
+- Standardise checkbox-first controls, required markers, aligned form fields,
+  helper typography and keyboard focus styling with the IoT portfolio.
+- Give dynamic notifications accessible status/alert roles while preserving
+  existing certificate security requirements and scalar selection controls.
+
 ## 0.5.6
 
 - Use compact required-only icons, including mandatory acknowledgements.

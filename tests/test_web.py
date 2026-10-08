@@ -18,7 +18,10 @@ class WebTests(unittest.TestCase):
         script = self.client.get('/static/form_requirements.js')
         self.assertEqual(script.status_code, 200)
         self.assertIn(b'control.required ? "required" : "optional"', script.data)
-        self.assertIn(b'attributeFilter:["required","disabled","readonly","data-requirement"]', script.data)
+        self.assertIn(b'attributeFilter:["required","disabled","readonly","data-requirement","class"]', script.data)
+        self.assertIn(b'label.prepend(control)', script.data)
+        self.assertIn(b'form_controls.css', page.data)
+        self.assertEqual(self.client.get('/static/form_controls.css').status_code, 200)
         self.assertIn(b'marker.textContent = "\xe2\x9c\xb1"', script.data)
         self.assertIn(b'.field-requirement', self.client.get('/static/app.css').data)
 
