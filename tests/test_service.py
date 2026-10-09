@@ -186,91 +186,59 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "PEM or DER"):
             self.service.root_trust("pkcs12")
 
-    def test_public_portal_profile_exports_split_public_and_private_identities(self):
+    def test_public_portal_profile_exports_one_shared_https_identity(self):
         service = CertificateService(
             self.root, engine=self.engine, external_acme=FakeExternalACME()
         )
         certificate_id, token = service.issue_public_portal(
             common_name="device.example.com",
             sans="alias.example.com",
-            api_hostname="device.local",
         )
 
         public = service.certificate(certificate_id)
         self.assertEqual(public["profile"], "public-portal")
         self.assertEqual(public["source"], "external-acme")
-        api = next(
-            item for item in service.certificates()
-            if item["provisioner"] == "iot-md-public-profile"
-        )
-        self.assertEqual(api["common_name"], "device.local")
+        self.assertEqual(len(service.certificates()), 1)
         export = service.export_for_token(token)
         with zipfile.ZipFile(export["path"]) as archive:
             self.assertEqual(
                 set(archive.namelist()),
                 {
                     "certificate-info.json", "web.crt.pem", "web.key.der",
-                    "api-server.crt.der",
-                    "api-server.key.der", "api-server.crt.pem", "mqtt-ca.der",
+                    "mqtt-ca.der",
                     "update-ca.der", "intermediate-ca.der",
                 },
             )
             public_key = serialization.load_der_private_key(
                 archive.read("web.key.der"), password=None
             )
-            api_key = serialization.load_der_private_key(
-                archive.read("api-server.key.der"), password=None
-            )
             self.assertEqual(public_key.key_size, 2048)
-            self.assertEqual(api_key.key_size, 2048)
-            self.assertNotEqual(
-                public_key.public_key().public_numbers(),
-                api_key.public_key().public_numbers(),
-            )
+            metadata = __import__("json").loads(archive.read("certificate-info.json"))
+            self.assertEqual(metadata["https_hostname"], "device.example.com")
 
-    def test_public_portal_replacement_supersedes_both_existing_identities(self):
+    def test_public_portal_replacement_supersedes_existing_https_identity(self):
         service = CertificateService(
             self.root, engine=self.engine, external_acme=FakeExternalACME()
         )
         original_id, _ = service.issue_public_portal(
-            common_name="device.example.com", api_hostname="device.local"
+            common_name="device.example.com"
         )
-        original_api = next(
-            item for item in service.certificates()
-            if item["provisioner"] == "iot-md-public-profile"
-        )
-
         replacement_id, _ = service.issue_public_portal(
-            common_name="device.example.com", api_hostname="device.local",
+            common_name="device.example.com",
             replaces=original_id,
         )
         replacement = service.certificate(replacement_id)
-        replacement_api = next(
-            item for item in service.certificates()
-            if item["provisioner"] == "iot-md-public-profile"
-            and item["status"] == "active"
-        )
-
         self.assertEqual(service.certificate(original_id)["status"], "superseded")
         self.assertEqual(replacement["renewed_from"], original_id)
-        self.assertEqual(service.certificate(original_api["id"])["status"], "superseded")
-        self.assertEqual(replacement_api["renewed_from"], original_api["id"])
 
 
-    def test_public_portal_rejects_invalid_private_name_before_acme_request(self):
-        external_acme = FakeExternalACME()
-        external_acme.issue = Mock(side_effect=AssertionError("ACME must not be called"))
+    def test_public_portal_does_not_require_a_second_device_hostname(self):
         service = CertificateService(
-            self.root, engine=self.engine, external_acme=external_acme
+            self.root, engine=self.engine, external_acme=FakeExternalACME()
         )
-
-        with self.assertRaisesRegex(ValueError, "single-label .local"):
-            service.issue_public_portal(
-                common_name="device.example.com",
-                sans="",
-                api_hostname="",
-            )
-        external_acme.issue.assert_not_called()
+        certificate_id, _ = service.issue_public_portal(common_name="device.example.com")
+        self.assertEqual(service.certificate(certificate_id)["common_name"], "device.example.com")
+        self.assertEqual(len(service.certificates()), 1)
 
     @staticmethod
     def enrollment_csr(name, usage, include_san=True):
@@ -298,9 +266,6 @@ class ServiceTests(unittest.TestCase):
             "portal_csr": self.enrollment_csr(
                 "device.example.com", ExtendedKeyUsageOID.SERVER_AUTH
             ),
-            "api_csr": self.enrollment_csr(
-                "device.local", ExtendedKeyUsageOID.SERVER_AUTH
-            ),
             "renewal_csr": self.enrollment_csr(
                 package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
             ),
@@ -316,16 +281,16 @@ class ServiceTests(unittest.TestCase):
         )
         self.assertEqual(status["status"], "complete")
         self.assertEqual(status["result"]["portal_hostname"], "device.example.com")
-        self.assertEqual(status["result"]["api_hostname"], "device.local")
+        self.assertEqual(status["result"]["device_hostname"], "device.local")
         self.assertEqual(
-            base64.b64decode(status["result"]["api_certificate_pem"]).count(
+            base64.b64decode(status["result"]["portal_certificate_pem"]).count(
                 b"-----BEGIN CERTIFICATE-----"
             ),
-            2,
+            1,
         )
-        self.assertEqual(len(service.certificates()), 3)
+        self.assertEqual(len(service.certificates()), 2)
 
-    def test_device_renewal_rotates_public_private_and_renewal_identities(self):
+    def test_device_renewal_rotates_https_and_renewal_identities(self):
         service = CertificateService(
             self.root, engine=self.engine, external_acme=FakeExternalACME()
         )
@@ -353,14 +318,11 @@ class ServiceTests(unittest.TestCase):
         _portal_key, portal_csr = request_for(
             package["portal_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
         )
-        _api_key, api_csr = request_for(
-            package["api_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
-        )
         renewal_key, renewal_csr = request_for(
             package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
         )
         service.claim_device_enrollment(enrollment_id, package["token"], {
-            "portal_csr": portal_csr, "api_csr": api_csr,
+            "portal_csr": portal_csr,
             "renewal_csr": renewal_csr,
         })
         service.fulfill_device_enrollment(enrollment_id)
@@ -375,15 +337,12 @@ class ServiceTests(unittest.TestCase):
         _new_portal_key, new_portal_csr = request_for(
             package["portal_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
         )
-        _new_api_key, new_api_csr = request_for(
-            package["api_hostname"], ExtendedKeyUsageOID.SERVER_AUTH
-        )
         _new_renewal_key, new_renewal_csr = request_for(
             package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
         )
         renewal = {
             "request_id": "1" * 32, "poll_token": "2" * 64,
-            "portal_csr": new_portal_csr, "api_csr": new_api_csr,
+            "portal_csr": new_portal_csr,
             "renewal_csr": new_renewal_csr,
             "renewal_certificate": initial["renewal_certificate_der"],
         }
@@ -401,9 +360,9 @@ class ServiceTests(unittest.TestCase):
             renewal["request_id"], renewal["poll_token"]
         )
         self.assertEqual(completed["status"], "complete")
-        self.assertEqual(completed["result"]["protocol"], "iotmd-renewal-v1")
+        self.assertEqual(completed["result"]["protocol"], "iotmd-renewal-v2")
         records = service.certificates()
-        self.assertEqual(len([item for item in records if item["status"] == "active"]), 3)
+        self.assertEqual(len([item for item in records if item["status"] == "active"]), 2)
         self.assertTrue(all(
             service.certificate(certificate_id)["status"] == "superseded"
             for certificate_id in original_ids
@@ -420,9 +379,6 @@ class ServiceTests(unittest.TestCase):
         service.claim_device_enrollment(enrollment_id, package["token"], {
             "portal_csr": self.enrollment_csr(
                 "other.example.com", ExtendedKeyUsageOID.SERVER_AUTH
-            ),
-            "api_csr": self.enrollment_csr(
-                "device.local", ExtendedKeyUsageOID.SERVER_AUTH
             ),
             "renewal_csr": self.enrollment_csr(
                 package["renewal_name"], ExtendedKeyUsageOID.CLIENT_AUTH, False
@@ -445,7 +401,7 @@ class ServiceTests(unittest.TestCase):
             service.create_automatic_device_enrollment("device.local")
         external.config["auto_enroll_enabled"] = True
         package = service.create_automatic_device_enrollment("device.local")
-        self.assertEqual(package["api_hostname"], "device.local")
+        self.assertEqual(package["device_hostname"], "device.local")
         self.assertEqual(package["portal_hostname"], "device.example.com")
         self.assertEqual(package["endpoint"], "https://iot-ca.home.arpa:9010")
         self.assertNotIn("private", str(package).lower())

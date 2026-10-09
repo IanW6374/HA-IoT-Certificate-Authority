@@ -138,35 +138,28 @@ not browser trusted. After successful staging issuance, change the environment
 to production and issue the final package. Public certificate names are normally
 recorded in Certificate Transparency logs; do not use sensitive hostnames.
 
-The IoT MD public-portal profile asks for the public portal name inside the
-configured Cloudflare zone and the private single-label `.local` name used by
-Device API/fleet clients. Its one-time ZIP contains:
+The IoT MD public profile asks for one HTTPS hostname inside the configured
+DNS suffix. Both portal and API present this server certificate. API callers
+still require private client certificates, enrollment and scopes. Its ZIP contains:
 
 ```text
 web.crt.pem
 web.key.der
-api-server.crt.der
-api-server.key.der
-api-server.crt.pem
 mqtt-ca.der
 update-ca.der
 intermediate-ca.der
 certificate-info.json
 ```
 
-`web.crt.pem` contains the public leaf and intermediate chain required by
-browsers. The `web.*` pair is publicly issued. The `api-server.*` pair and trust anchors
-are issued by the private IoT CA. Unzip the package on an administrator
-workstation and select the named DER files in the IoT MD initial setup wizard.
-The Cloudflare token never goes to the IoT MD device.
+The web pair contains the public leaf/intermediate chain and matching key.
+Private trust anchors remain separate. There are no api-server.* files.
+Cloudflare credentials never go to the device.
 
-The manual ZIP remains available, but version 0.4 also provides automated,
-device-key-preserving provisioning. Choose **Create enrollment authorization** on the
-dashboard, enter the public portal host label and download the one-time
-`.iotenroll` file. The file contains the exact public portal and private
-`<host>.local` identities, the private CA root, endpoint and a random bearer
-authorization. It contains no private key or Cloudflare credential and expires
-after 30 minutes.
+Version 0.6.0 uses enrollment/renewal protocol v2 with IoT-MD Alpha 110 and
+Management 3.1.0. Re-enroll protocol-v1 managed identities; no migration or
+compatibility path is provided. One-time .iotenroll authorizations bind the
+discovery alias and HTTPS hostname, include private root, endpoint and random
+bearer token, and expire after 30 minutes. They contain no private key.
 
 For a one-step first boot, open **Automatic IoT CA enrollment** in the
 **Certificate actions** panel on Overview. The button displays a live countdown
@@ -182,15 +175,13 @@ In the IoT MD first-boot wizard, the administrator may explicitly choose
 **Automatic IoT CA enrollment**, **IoT CA enrollment authorization (`.iotenroll`)**,
 **Private CA ACME enrollment**, **Manual certificate package**, or
 **Self-signed certificate**. For either IoT CA enrollment method, the device
-generates independent P-256 portal, Device API and renewal keys locally and
-sends only signed CSRs over pinned HTTPS to TCP 9010. The CA requires exact
-authorized names and key usages. It performs Cloudflare DNS-01 for the portal
-CSR, signs the other CSRs privately, and returns certificates and public trust
-only. The private Device API server response includes its leaf and online
-intermediate so root-trusting clients can build the complete chain. The
-authorization cannot be reused with different requests. The installed renewal
-identity subsequently rotates the public portal, private Device API, and
-renewal identities together without exporting a device private key.
+generates independent P-256 HTTPS-server and renewal-client keys locally and
+sends only their signed CSRs over pinned HTTPS to TCP 9010. The CA requires
+exact names and usages. Cloudflare DNS-01 issues the shared HTTPS certificate;
+the private authority signs the renewal-client certificate. Only certificates
+and public trust are returned. Authorization cannot be reused with different
+requests. The private renewal credential later authorizes rotating these two
+identities without exporting private keys. It is not a second API server identity.
 
 Neither automated nor manual provisioning calls Cloudflare from the device or
 places DNS credentials on it. This prevents an unprovisioned field device from

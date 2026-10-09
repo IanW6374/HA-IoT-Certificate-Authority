@@ -274,10 +274,8 @@ def create_app(*, data_root=None, service=None):
                     "letters, numbers, or internal hyphens"
                 )
             common_name = f"{portal_host}.{external['zone']}" if portal_host else ""
-            api_hostname = request.form.get("api_hostname", "").strip()
             certificate_id, token = certificate_service.issue_public_portal(
                 common_name=common_name,
-                api_hostname=api_hostname or f"{portal_host}.local",
                 sans=request.form.get("sans", ""),
                 replaces=replacement_id or None,
             )

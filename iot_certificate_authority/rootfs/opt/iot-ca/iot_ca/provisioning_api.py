@@ -86,11 +86,11 @@ def create_app(*, data_root=None, service=None):
         attempts.append(now)
         automatic_attempts[str(source)] = attempts
         payload = request.get_json(silent=True)
-        if not isinstance(payload, dict) or set(payload) != {"api_hostname"}:
-            return jsonify({"error": "A Device API hostname is required"}), 400
+        if not isinstance(payload, dict) or set(payload) != {"device_hostname"}:
+            return jsonify({"error": "A device discovery hostname is required"}), 400
         try:
             package = certificate_service.create_automatic_device_enrollment(
-                payload["api_hostname"]
+                payload["device_hostname"]
             )
         except PermissionError as exc:
             return jsonify({"error": str(exc)}), 403
@@ -105,9 +105,9 @@ def create_app(*, data_root=None, service=None):
             return jsonify({"error": "Bearer enrollment token is required"}), 401
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict) or set(payload) != {
-            "portal_csr", "api_csr", "renewal_csr"
+            "portal_csr", "renewal_csr"
         }:
-            return jsonify({"error": "Three certificate requests are required"}), 400
+            return jsonify({"error": "HTTPS and renewal certificate requests are required"}), 400
         try:
             enrollment = certificate_service.claim_device_enrollment(
                 enrollment_id, token, payload
@@ -138,7 +138,7 @@ def create_app(*, data_root=None, service=None):
     def renew(enrollment_id):
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict) or set(payload) != {
-            "request_id", "poll_token", "portal_csr", "api_csr",
+            "request_id", "poll_token", "portal_csr",
             "renewal_csr", "renewal_certificate", "proof_signature",
         }:
             return jsonify({"error": "A complete signed renewal request is required"}), 400

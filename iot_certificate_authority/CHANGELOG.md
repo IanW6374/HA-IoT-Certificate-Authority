@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+- Issue one device HTTPS certificate/key for both IoT-MD portal and API. Remove
+  the extra private API server identity from manual packages and forms.
+- Enrollment/renewal protocol v2 accepts only HTTPS and renewal-client CSRs.
+  The renewal credential remains private-CA issued and separate from the server
+  identity; device private keys never leave the device during enrollment.
+- Coordinate with IoT-MD Alpha 110 and Management 3.1.0. Existing protocol-v1
+  devices must re-enroll; no compatibility or migration path is provided.
+- API client trust and permission scopes remain independent of server issuance.
+
 ## 0.5.7
 
 - Standardise checkbox-first controls, required markers, aligned form fields,

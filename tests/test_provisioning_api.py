@@ -24,16 +24,16 @@ class FakeService:
         return {
             'status': self.status,
             'error': None,
-            'result': {'protocol': 'iotmd-enrollment-v1'}
+            'result': {'protocol': 'iotmd-enrollment-v2'}
             if self.status == 'complete' else None,
         }
 
-    def create_automatic_device_enrollment(self, api_hostname):
-        if api_hostname != 'device.local':
+    def create_automatic_device_enrollment(self, device_hostname):
+        if device_hostname != 'device.local':
             raise ValueError('The Device API hostname must be one .local host name')
         return {
-            'protocol': 'iotmd-enrollment-v1',
-            'api_hostname': api_hostname,
+            'protocol': 'iotmd-enrollment-v2',
+            'device_hostname': device_hostname,
             'portal_hostname': 'device.example.com',
         }
 
@@ -54,7 +54,7 @@ class FakeService:
             raise PermissionError('Unknown renewal or invalid token')
         return {
             'status': self.renewal_status, 'error': None,
-            'result': {'protocol': 'iotmd-renewal-v1'}
+            'result': {'protocol': 'iotmd-renewal-v2'}
             if self.renewal_status == 'complete' else None,
         }
 
@@ -74,8 +74,12 @@ class ProvisioningAPITests(unittest.TestCase):
             url, headers=headers, json={'portal_csr': 'only-one'}
         )
         self.assertEqual(incomplete.status_code, 400)
+        legacy = self.client.post(url, headers=headers, json={
+            'portal_csr': 'portal', 'api_csr': 'api', 'renewal_csr': 'renewal',
+        })
+        self.assertEqual(legacy.status_code, 400)
         accepted = self.client.post(url, headers=headers, json={
-            'portal_csr': 'portal', 'api_csr': 'api',
+            'portal_csr': 'portal',
             'renewal_csr': 'renewal',
         })
         self.assertEqual(accepted.status_code, 202)
@@ -87,19 +91,19 @@ class ProvisioningAPITests(unittest.TestCase):
         self.assertEqual(status.status_code, 200)
         self.assertEqual(status.json['status'], 'complete')
         self.assertEqual(
-            status.json['result']['protocol'], 'iotmd-enrollment-v1'
+            status.json['result']['protocol'], 'iotmd-enrollment-v2'
         )
         self.assertEqual(status.headers['Cache-Control'], 'no-store')
 
     def test_private_lan_auto_enrollment_returns_host_bound_package(self):
         response = self.client.post(
-            '/v1/auto-enrollments', json={'api_hostname': 'device.local'},
+            '/v1/auto-enrollments', json={'device_hostname': 'device.local'},
             environ_base={'REMOTE_ADDR': '192.168.1.50'},
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json['api_hostname'], 'device.local')
+        self.assertEqual(response.json['device_hostname'], 'device.local')
         public = self.client.post(
-            '/v1/auto-enrollments', json={'api_hostname': 'device.local'},
+            '/v1/auto-enrollments', json={'device_hostname': 'device.local'},
             environ_base={'REMOTE_ADDR': '8.8.8.8'},
         )
         self.assertEqual(public.status_code, 403)
@@ -107,7 +111,7 @@ class ProvisioningAPITests(unittest.TestCase):
     def test_signed_renewal_is_scheduled_and_polled_with_its_token(self):
         payload = {
             'request_id': '1' * 32, 'poll_token': '2' * 64,
-            'portal_csr': 'portal', 'api_csr': 'api',
+            'portal_csr': 'portal',
             'renewal_csr': 'renewal', 'renewal_certificate': 'certificate',
             'proof_signature': 'signature',
         }
@@ -123,7 +127,7 @@ class ProvisioningAPITests(unittest.TestCase):
                 break
             time.sleep(0.01)
         self.assertEqual(status.status_code, 200)
-        self.assertEqual(status.json['result']['protocol'], 'iotmd-renewal-v1')
+        self.assertEqual(status.json['result']['protocol'], 'iotmd-renewal-v2')
 
 
 if __name__ == '__main__':

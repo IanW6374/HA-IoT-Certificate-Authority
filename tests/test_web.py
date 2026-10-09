@@ -496,7 +496,7 @@ class WebTests(unittest.TestCase):
 
     def test_public_portal_certificate_can_be_revoked(self):
         certificate_id, _token = self.service.issue_public_portal(
-            common_name="device.example.com", api_hostname="device.local"
+            common_name="device.example.com"
         )
         detail = self.client.get("/certificates/" + certificate_id)
         self.assertIn(b"Revoke public certificate", detail.data)
@@ -516,7 +516,7 @@ class WebTests(unittest.TestCase):
 
     def test_public_replacement_form_is_populated_from_existing_identity(self):
         certificate_id, _token = self.service.issue_public_portal(
-            common_name="device.example.com", api_hostname="private-device.local",
+            common_name="device.example.com",
             sans="alias.example.com",
         )
         detail = self.client.get("/certificates/" + certificate_id)
@@ -532,7 +532,7 @@ class WebTests(unittest.TestCase):
         self.assertIn(b"Edit and reissue a public portal certificate", replacement.data)
         self.assertIn(b'name="portal_host"', replacement.data)
         self.assertIn(b'value="device"', replacement.data)
-        self.assertIn(b'value="private-device.local"', replacement.data)
+        self.assertNotIn(b'value="private-device.local"', replacement.data)
         self.assertIn(b">alias.example.com</textarea>", replacement.data)
         self.assertIn(
             ('name="replaces" value="' + certificate_id + '"').encode(),
@@ -574,7 +574,7 @@ class WebTests(unittest.TestCase):
         self.assertIn(b'id="public-portal-host"', response.data)
         self.assertIn(b'name="portal_host"', response.data)
         self.assertIn(b'.example.com</span>', response.data)
-        self.assertIn(b'id="public-api-hostname"', response.data)
+        self.assertNotIn(b'id="public-api-hostname"', response.data)
 
         script = self.client.get("/static/app.js")
         self.assertIn(b"The example text is not submitted as a value", script.data)
@@ -595,7 +595,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"must be one DNS label", response.data)
 
-    def test_public_portal_route_derives_private_hostname_without_javascript(self):
+    def test_public_portal_route_issues_one_https_identity_without_javascript(self):
         response = self.client.post(
             "/public-certificates/new",
             data={
@@ -608,11 +608,8 @@ class WebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        private_identity = next(
-            item for item in self.service.certificates()
-            if item["provisioner"] == "iot-md-public-profile"
-        )
-        self.assertEqual(private_identity["common_name"], "device.local")
+        self.assertEqual(len(self.service.certificates()), 1)
+        self.assertEqual(self.service.certificates()[0]["common_name"], "device.example.com")
 
     def test_iot_md_enrollment_route_exports_one_time_authorization(self):
         response = self.client.post(
@@ -628,9 +625,9 @@ class WebTests(unittest.TestCase):
             download.mimetype, "application/vnd.iotmd.enrollment+json"
         )
         package = __import__("json").loads(download.data)
-        self.assertEqual(package["protocol"], "iotmd-enrollment-v1")
+        self.assertEqual(package["protocol"], "iotmd-enrollment-v2")
         self.assertEqual(package["portal_hostname"], "device.example.com")
-        self.assertEqual(package["api_hostname"], "device.local")
+        self.assertEqual(package["device_hostname"], "device.local")
         self.assertNotIn("private", str(package).lower())
 
 
