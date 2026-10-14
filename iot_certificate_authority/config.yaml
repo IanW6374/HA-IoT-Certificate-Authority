@@ -1,5 +1,5 @@
 name: IoT Certificate Authority
-version: "0.6.0"
+version: "0.7.0"
 slug: iot_certificate_authority
 description: Graphical private CA and certificate lifecycle manager for IoT devices
 url: https://github.com/IanW6374/HA-IoT-Certificate-Authority
@@ -20,11 +20,29 @@ backup: cold
 ports:
   9000/tcp: 9000
   9010/tcp: 9010
+  9011/tcp: 9011
 ports_description:
   9000/tcp: step-ca HTTPS and ACME enrollment endpoint
   9010/tcp: IoT MD certificate provisioning API (HTTPS)
+  9011/tcp: Device-bound signed-time bootstrap (HTTP; enabled separately)
 map:
   - type: addon_config
     read_only: false
-options: {}
-schema: {}
+options:
+  signed_time_enabled: false
+  time_source: host
+  time_ntp_servers: []
+  time_require_nts: true
+  time_device_macs: []
+  time_hostname: ""
+  time_port: 9011
+schema:
+  signed_time_enabled: bool
+  time_source: list(host|ntp)
+  time_ntp_servers:
+    - str
+  time_require_nts: bool
+  time_device_macs:
+    - str
+  time_hostname: str?
+  time_port: port

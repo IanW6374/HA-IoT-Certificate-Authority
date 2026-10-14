@@ -14,6 +14,26 @@
     <div class="actions settings-save-bar"><span class="portal-status" role="status" aria-live="polite"></span><button class="secondary" type="reset">Discard</button><button type="submit">Save service ports</button></div>
   </form>
 </section>
+<section id="signed-time-settings" class="panel detail-list">
+  <div class="section-head"><div><p class="eyebrow">Device security</p><h2>Signed time</h2></div></div>
+  <p>Configure this service in the Home Assistant add-on Configuration tab, then restart the add-on. It does not adjust the Home Assistant host clock.</p>
+  <dl>
+    <dt>Service</dt><dd>{{ 'Enabled' if signed_time.signed_time_enabled else 'Disabled' }}</dd>
+    <dt>Clock source</dt><dd>{{ 'Home Assistant synchronized host clock' if signed_time.time_source == 'host' else 'Configured NTP servers' }}</dd>
+    <dt>Clock health</dt><dd>{{ 'Synchronized' if signed_time.healthy else 'Unavailable / not synchronized — no time signing' }}</dd>
+    <dt>Clock status</dt><dd>{{ signed_time.reason }}</dd>
+    <dt>NTP server names</dt><dd>{{ signed_time.time_ntp_servers|join(', ') or 'Not configured' }}</dd>
+    <dt>Custom NTP authentication</dt><dd>{{ 'NTS required; no plain-NTP fallback' if signed_time.time_require_nts else 'Plain NTP explicitly permitted — upstream time is unauthenticated' }}</dd>
+    <dt>Device endpoint</dt><dd class="wrap">{{ signed_time.hostname or 'Set time_hostname or initialize the CA DNS identity' }}:{{ signed_time.port }}</dd>
+    <dt>Allowed factory MACs</dt><dd>{{ signed_time.time_device_macs|join(', ') or 'None' }}</dd>
+    <dt>Time-key fingerprint (SHA-256)</dt><dd class="wrap">{{ signed_time.fingerprint or 'Created on first enabled startup' }}</dd>
+    <dt>Public key (P-256 X||Y)</dt><dd class="wrap">{{ signed_time.public_key_xy or 'Not available' }}</dd>
+  </dl>
+  {% if signed_time.signed_time_enabled and signed_time.key_ready and signed_time.hostname %}
+  <a class="button secondary" href="{{ url_for('signed_time_provisioning') }}">Download native time configuration</a>
+  {% endif %}
+  <p class="help">NTS applies only to custom NTP sources; host mode inherits HA’s clock-source security. The downloaded object goes into the native provisioning manifest’s <code>time</code> field. The dedicated signing key remains private and is separate from certificate-signing keys. The bootstrap HTTP response is authenticated by its pinned signature.</p>
+</section>
 {% set external = settings.external_acme %}
 <section id="external-acme-settings" class="panel">
   <div class="section-head"><div><p class="eyebrow">External issuer</p><h2>Public portal certificates</h2></div></div>

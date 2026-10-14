@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0
+
+- Add optional native IoT-MD signed-time bootstrap with a separate persistent
+  P-256 key, explicit device MAC allowlist and public provisioning-pin download.
+- Default to the synchronized HA host clock; optionally track one to four named
+  NTP servers in an isolated chrony virtual clock without adjusting host time.
+- Require NTS for custom sources by default. Plain NTP needs an explicit opt-out;
+  no silent unauthenticated fallback. Fail closed on clock faults/stale samples.
+- Show source, health, host endpoint and public key in CA Settings. Configure
+  options through HA add-on Configuration and restart before device testing.
+
 ## 0.6.0
 
 - Issue one device HTTPS certificate/key for both IoT-MD portal and API. Remove

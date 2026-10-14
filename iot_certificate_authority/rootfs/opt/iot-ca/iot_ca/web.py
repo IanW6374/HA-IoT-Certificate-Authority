@@ -23,6 +23,7 @@ from werkzeug.utils import secure_filename
 
 from .profiles import PROFILES
 from .service import CertificateService
+from .signed_time import public_configuration
 
 
 class IngressScriptName:
@@ -546,7 +547,19 @@ def create_app(*, data_root=None, service=None):
             "settings.html",
             settings=certificate_service.settings(),
             ca_health=certificate_service.engine.health(),
+            signed_time=public_configuration(data_root),
         )
+
+    @app.get("/settings/signed-time/provisioning.json")
+    def signed_time_provisioning():
+        _require_initialized(certificate_service)
+        values = public_configuration(data_root)
+        if not values["signed_time_enabled"] or not values["key_ready"] or not values["hostname"]:
+            abort(409, "Enable signed time and configure its reachable hostname first")
+        response = jsonify({"hostname": values["hostname"], "port": values["port"],
+                            "public_key_xy": values["public_key_xy"]})
+        response.headers["Content-Disposition"] = 'attachment; filename="iotmd-time-authority.json"'
+        return response
 
     @app.post("/automatic-enrollment/open")
     def open_automatic_enrollment():

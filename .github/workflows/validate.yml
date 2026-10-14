@@ -23,6 +23,10 @@ jobs:
         env:
           PYTHONPATH: iot_certificate_authority/rootfs/opt/iot-ca
         run: python -m unittest discover -v
+      - name: Compile target-native read-only host clock query
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -O2 iot_certificate_authority/rootfs/opt/iot-ca/clock_status.c -o /tmp/iot-ca-clock-status
+          /tmp/iot-ca-clock-status | python -c 'import json,sys; x=json.load(sys.stdin); assert all(type(x[k]) is int for k in ("result", "status", "maxerror"))'
       - name: Validate YAML
         run: |
           python - <<'PY'
@@ -39,14 +43,29 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: aarch64
+            platform: linux/arm64
+          - arch: armv7
+            platform: linux/arm/v7
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - name: Read add-on version
+        id: version
+        run: |
+          echo "value=$(sed -n 's/^version: "\([^"]*\)"/\1/p' iot_certificate_authority/config.yaml)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: iot_certificate_authority
           push: false
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           build-args: |
-            BUILD_ARCH=amd64
-            BUILD_VERSION=0.4.0
+            BUILD_ARCH=${{ matrix.arch }}
+            BUILD_VERSION=${{ steps.version.outputs.value }}

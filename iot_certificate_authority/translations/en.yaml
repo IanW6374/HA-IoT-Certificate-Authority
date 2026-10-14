@@ -1,2 +1,26 @@
 network:
   9000/tcp: step-ca HTTPS and ACME enrollment endpoint
+  9010/tcp: IoT MD certificate provisioning API (HTTPS)
+  9011/tcp: Device-bound signed-time bootstrap
+configuration:
+  signed_time_enabled:
+    name: Enable signed-time service
+    description: Enables the dedicated device-bound time endpoint. Requires allowed factory MACs and a healthy clock.
+  time_source:
+    name: Clock source
+    description: Use the synchronized HA host clock (host), or an isolated custom NTP clock (ntp). Neither mode changes the host clock.
+  time_ntp_servers:
+    name: NTP server names
+    description: Up to four hostnames or IPv4 addresses. Used only with the ntp clock source.
+  time_require_nts:
+    name: Require authenticated NTP (NTS)
+    description: Enabled by default. Disabling explicitly permits unauthenticated upstream NTP; there is no automatic fallback.
+  time_device_macs:
+    name: Allowed device factory MACs
+    description: Factory Wi-Fi STA MACs, 12 hexadecimal digits or colon-separated. Empty lists cannot enable the service.
+  time_hostname:
+    name: Signed-time hostname
+    description: Reachable hostname for native provisioning. Defaults to the initialized CA DNS name.
+  time_port:
+    name: Signed-time host port
+    description: Externally reachable port; configure the matching Network mapping for internal TCP 9011.

@@ -51,8 +51,14 @@ RUN apk add --no-cache \
         py3-cryptography \
         py3-flask \
         py3-gunicorn
+RUN apk add --no-cache chrony ca-certificates
+RUN chronyd -v | grep -F -- '+NTS'
 
 COPY rootfs /
+
+RUN apk add --no-cache --virtual .time-build gcc musl-dev \
+    && cc -std=c11 -Wall -Wextra -Werror -O2 /opt/iot-ca/clock_status.c -o /usr/local/bin/iot-ca-clock-status \
+    && apk del .time-build
 
 RUN chmod 0755 /run.sh \
     && mkdir -p /run/nginx

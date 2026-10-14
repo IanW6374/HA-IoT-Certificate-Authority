@@ -19,6 +19,8 @@ publicly trusted IoT MD portal certificates without exposing private services.
 - One-time private-key downloads with automatic expiry
 - Append-only operator audit history
 - ACME endpoint provided by `step-ca`
+- Optional device-bound signed-time service, synchronized host-clock default,
+  configurable named NTP servers and NTS-required custom-source default
 - Optional Let’s Encrypt portal issuance through scoped Cloudflare DNS tokens
 - One shared IoT MD portal/API HTTPS identity with separate private API caller trust
 - Host-bound IoT CA enrollment authorizations (`.iotenroll`) that let IoT MD devices generate keys locally

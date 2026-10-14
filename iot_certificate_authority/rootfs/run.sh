@@ -37,8 +37,8 @@ start_provisioning_api() {
 
 shutdown() {
     trap - TERM INT EXIT
-    kill "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}" 2>/dev/null || true
-    wait "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}" 2>/dev/null || true
+    kill "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}" "${TIME_PID}" 2>/dev/null || true
+    wait "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}" "${TIME_PID}" 2>/dev/null || true
 }
 
 mkdir -p "${DATA_ROOT}" /run/nginx
@@ -62,10 +62,13 @@ NGINX_PID=$!
 start_provisioning_api &
 PROVISIONING_PID=$!
 
+python3 -u -m iot_ca.signed_time &
+TIME_PID=$!
+
 trap shutdown TERM INT EXIT
 
 set +e
-wait -n "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}"
+wait -n "${STEP_CA_PID}" "${UI_PID}" "${NGINX_PID}" "${PROVISIONING_PID}" "${TIME_PID}"
 EXIT_STATUS=$?
 set -e
 if [[ "${EXIT_STATUS}" -eq 0 ]]; then

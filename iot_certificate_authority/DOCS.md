@@ -54,6 +54,78 @@ Ingress and is restricted to Home Assistant administrators. The Smallstep CA
 service is exposed separately on TCP port 9000 for ACME and explicitly
 configured enrollment clients.
 
+## Signed-time service for native IoT-MD
+
+Configure the following in the HA add-on **Configuration** tab, then restart.
+The service is disabled by default; it does not alter certificate issuance or
+adjust the HA host clock. No laptop-hosted service is needed.
+
+```yaml
+signed_time_enabled: true
+time_source: host
+time_ntp_servers: []
+time_require_nts: true
+time_device_macs:
+  - "3cdc755be290"
+time_hostname: "iot-ca.home.arpa"
+time_port: 9011
+```
+
+The example MAC is IoT-MD-002's previously inspected identity; verify the actual
+factory Wi-Fi STA MAC before enabling it. Keep the allowlist explicit. A hostname
+must resolve from the device. Empty `time_hostname` uses the initialized CA DNS
+identity; `time_port` describes the external host mapping for internal TCP 9011.
+Keep that HTTP bootstrap listener LAN-only; signatures, not TLS-date bypass,
+authenticate its responses. It accepts no credentials or device commands.
+
+`host` requires Linux kernel synchronization evidence and a reported maximum
+error no greater than one second. A plausible wall-clock date alone is refused.
+This mode inherits the security of HA's configured clock source: kernel
+synchronization evidence is not proof that HA's upstream NTP is authenticated.
+If the HA host's clock service does not publish this evidence, health stays
+unavailable: use the supported custom source rather than bypassing the check.
+
+To use your own named servers, choose `time_source: ntp` and supply one to four
+hostnames or IPv4 addresses in `time_ntp_servers`. NTS is required by default;
+all configured servers must support it. There is **no automatic fallback** to
+plain NTP. Only explicitly setting `time_require_nts: false` permits ordinary
+unauthenticated NTP; a signed downstream response does not authenticate that
+upstream or protect against an upstream attacker. Multiple servers provide
+redundancy, not proof that their clocks are correct.
+
+The custom source runs an isolated chrony virtual clock with `-x`, UDP serving
+and network command ports disabled, and no CAP_SYS_TIME. It uses existing DNS,
+outbound UDP 123 and, for NTS, TCP 4460 and normal server-certificate validation.
+It does not modify HA host NTP configuration. NTS establishment still requires
+the authority host to have sufficiently accurate time for certificate validation.
+No TLS certificate validation is disabled to solve bootstrap.
+
+Signing stops for lost/stale synchronization, excessive error, expired samples
+or a clock step. Steps are latched until operator investigation and add-on restart;
+ordinary source outages may recover. Accepted samples expire after 15 seconds,
+monitoring runs every five seconds, and the HTTP server has four bounded workers,
+absolute per-connection deadlines, explicit MAC allowlists and per-device rate limits.
+Clock/configuration changes require restart; they never cause device sensor resets.
+
+The service creates a **separate P-256 time key**, mode 0600 under
+`/config/iot-ca/secrets/time-signing-key.pem`, only on its first enabled startup.
+It does not reuse, export or rotate CA root/intermediate keys. Preserve the
+dedicated time key in encrypted HA backups. Corruption cannot silently generate
+a replacement. Rotation is deliberate reprovisioning of each device's public pin.
+
+**Settings → Signed time** shows source, health and the public-key fingerprint.
+**Download native time configuration** exports only the native manifest's
+`time` object (`hostname`, `port`, `public_key_xy`). Native provisioning can import
+it with `--time-authority-config FILE`; different existing pins are rejected rather
+than silently replaced. The device validates its own MAC, fresh nonce, exact
+118-byte response, canonical signature and freshness/lease independently.
+Portal/API/MQTT remain gated until time is trusted; acquisition continues independently.
+
+Offline tests exercise protocol compatibility, real signatures, loopback HTTP,
+clock health/lease/step policy, isolated chrony configuration and private key
+persistence. Target Linux/Alpine build and actual HA/NTS/device operation still
+require qualification; no service or new trust key has been deployed by these tests.
+
 ## Initialize the authority
 
 Choose the CA identity carefully; changing it requires a migration rather than
