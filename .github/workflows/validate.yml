@@ -35,6 +35,7 @@ jobs:
           for path in (
               Path("repository.yaml"),
               Path("iot_certificate_authority/config.yaml"),
+              Path("iot_certificate_authority/build.yaml"),
               Path("iot_certificate_authority/translations/en.yaml"),
           ):
               yaml.safe_load(path.read_text())
@@ -49,10 +50,13 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
+            base: ghcr.io/home-assistant/base:3.22
           - arch: aarch64
             platform: linux/arm64
+            base: ghcr.io/home-assistant/base:3.22
           - arch: armv7
             platform: linux/arm/v7
+            base: ghcr.io/home-assistant/armv7-base:3.22
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -68,4 +72,5 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             BUILD_ARCH=${{ matrix.arch }}
+            BUILD_FROM=${{ matrix.base }}
             BUILD_VERSION=${{ steps.version.outputs.value }}

@@ -1,3 +1,5 @@
+ARG BUILD_FROM=ghcr.io/home-assistant/base:3.22
+
 FROM smallstep/step-ca:0.30.2 AS smallstep
 
 FROM alpine:3.22 AS lego
@@ -20,7 +22,7 @@ RUN apk add --no-cache curl tar \
     && tar -xzf "/tmp/${LEGO_ARCHIVE}" -C /usr/local/bin lego \
     && chmod 0755 /usr/local/bin/lego
 
-FROM ghcr.io/home-assistant/base:latest
+FROM ${BUILD_FROM}
 
 ARG BUILD_ARCH="unknown"
 ARG BUILD_VERSION="dev"

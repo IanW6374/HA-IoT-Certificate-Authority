@@ -2,6 +2,9 @@
 
 ## 0.7.0
 
+- Pin supported Alpine 3.22 HA base images, including the available legacy ARMv7
+  base. Check genuine chrony NTS support and all advertised architectures in CI.
+
 - Add optional native IoT-MD signed-time bootstrap with a separate persistent
   P-256 key, explicit device MAC allowlist and public provisioning-pin download.
 - Default to the synchronized HA host clock; optionally track one to four named
